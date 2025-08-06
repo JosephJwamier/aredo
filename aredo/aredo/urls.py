@@ -7,18 +7,20 @@ from django.urls import re_path
 from drf_yasg.views import get_schema_view
 from drf_yasg import openapi
 
+
+
 schema_view = get_schema_view(
-   openapi.Info(
-      title="Your Project API",
-      default_version='v1',
-      description="API documentation for your project",
-      terms_of_service="https://www.yourapp.com/terms/",
-      contact=openapi.Contact(email="contact@yourapp.com"),
-      license=openapi.License(name="BSD License"),
-   ),
-   public=True,
-   permission_classes=[permissions.AllowAny],
+    openapi.Info(
+        title="Aredo API",
+        default_version='v1',
+        description="API for user submissions with JWT",
+    ),
+    public=True,
+    permission_classes=(permissions.AllowAny,),
+    authentication_classes=[],
 )
+
+
 
 
 urlpatterns = [
