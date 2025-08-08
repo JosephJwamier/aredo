@@ -212,6 +212,12 @@ class ApplicationForm(models.Model):
         ('master', 'Master'),
         ('phd', 'PhD'),
     ]
+    By = [
+        ('flight ', 'Flight'),
+        ('taxi', 'Taxi'),
+        ('train', 'Train'),
+        ('autobus', 'Autobus'),
+    ]
 
     GOVERNORATE_CHOICES = [
         ('baghdad', 'Baghdad'),
@@ -260,6 +266,7 @@ class ApplicationForm(models.Model):
     full_name = models.CharField(max_length=255)
     email = models.EmailField()
     phone = models.CharField(max_length=255)
+    notes = models.CharField(max_length=500)
 
     # Common optional fields
     department = models.CharField(max_length=255, blank=True)
@@ -287,6 +294,9 @@ class ApplicationForm(models.Model):
     nearestPoint = models.CharField(max_length=255, blank=True)
     govern = models.CharField(max_length=20, choices=GOVERNORATE_CHOICES, blank=True)
 
+    #flight
+    by = models.CharField(max_length=20, choices=GOVERNORATE_CHOICES, blank=True)
+
     # Publish-specific fields
     pages = models.CharField(max_length=255, blank=True)
     magazine = models.CharField(max_length=255, blank=True)
@@ -309,7 +319,7 @@ class ApplicationForm(models.Model):
 
     # Timestamps
     date_applied = models.DateTimeField(auto_now_add=True)
-    time = models.DateTimeField(auto_now_add=True)
+    data = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def save_images(self, image_files):

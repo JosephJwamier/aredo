@@ -237,13 +237,13 @@ class ApplicantViewSet(viewsets.ModelViewSet):
 
         # Helper methods to reduce code duplication
 
-    def _create_form_by_code(self, request, kind_code, serializer_class):
+    def _create_form_by_code(self, request, kind_name, serializer_class):
         """Helper method to create forms of specific type using FormKind code"""
         try:
-            form_kind = FormKind.objects.get(code=kind_code, is_active=True)
+            form_kind = FormKind.objects.get(name=kind_name, is_active=True)
         except FormKind.DoesNotExist:
             return Response(
-                {'error': f'Form kind "{kind_code}" not found or inactive'},
+                {'error': f'Form kind "{kind_name}" not found or inactive'},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -255,13 +255,13 @@ class ApplicantViewSet(viewsets.ModelViewSet):
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    def _list_forms_by_code(self, request, kind_code, serializer_class):
+    def _list_forms_by_code(self, request, kind_name, serializer_class):
         """Helper method to list forms of specific type using FormKind code with pagination"""
         try:
-            form_kind = FormKind.objects.get(code=kind_code, is_active=True)
+            form_kind = FormKind.objects.get(name=kind_name, is_active=True)
         except FormKind.DoesNotExist:
             return Response(
-                {'error': f'Form kind "{kind_code}" not found or inactive'},
+                {'error': f'Form kind "{kind_name}" not found or inactive'},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -291,10 +291,10 @@ class ApplicantViewSet(viewsets.ModelViewSet):
         file_ext = os.path.splitext(original_filename)[1].lower()
 
         # Create safe username (slug format)
-        safe_username = slugify(application.user.username)
+        safe_username = slugify(application.user.name)
 
         # Get form kind code
-        form_kind = application.kind.code if application.kind else 'unknown'
+        form_kind = application.kind.name if application.kind else 'unknown'
 
         # Get current date
         current_date = datetime.now()
@@ -391,7 +391,7 @@ class ApplicantViewSet(viewsets.ModelViewSet):
     def create_applicant(self, request):
         """Create Applicant Application Form with optional images"""
         try:
-            form_kind = FormKind.objects.get(code=FormKind.APPLICANT, is_active=True)
+            form_kind = FormKind.objects.get(name=FormKind.APPLICANT, is_active=True)
         except FormKind.DoesNotExist:
             return Response(
                 {'error': f'Form kind "{FormKind.APPLICANT}" not found or inactive'},
@@ -469,7 +469,7 @@ class ApplicantViewSet(viewsets.ModelViewSet):
     def create_cancelcode(self, request):
         """Create Cancel Code Application Form with optional images"""
         try:
-            form_kind = FormKind.objects.get(code=FormKind.CANCEL_CODE, is_active=True)
+            form_kind = FormKind.objects.get(name=FormKind.CANCEL_CODE, is_active=True)
         except FormKind.DoesNotExist:
             return Response(
                 {'error': f'Form kind "{FormKind.CANCEL_CODE}" not found or inactive'},
@@ -519,11 +519,10 @@ class ApplicantViewSet(viewsets.ModelViewSet):
         operation_description="List all Cancel Code forms for the authenticated user with pagination",
         tags=['Cancel Code Forms'],
         manual_parameters=[
-            openapi.Parameter('images', openapi.IN_FORM, description="Multiple image files", type=openapi.TYPE_FILE,
-                              required=False),
-            openapi.Parameter('image_types', openapi.IN_FORM, description="Comma-separated image types",
-                              type=openapi.TYPE_STRING, required=False),
-        ],
+            openapi.Parameter('page', openapi.IN_QUERY, description="Page number", type=openapi.TYPE_INTEGER),
+            openapi.Parameter('page_size', openapi.IN_QUERY, description="Number of results per page",
+                              type=openapi.TYPE_INTEGER),
+        ]
     )
     @action(detail=False, methods=['get'], url_path='cancelcode')
     def list_cancelcode(self, request):
@@ -538,16 +537,17 @@ class ApplicantViewSet(viewsets.ModelViewSet):
         operation_description="Create a new Translation form",
         tags=['Translation Forms'],
         manual_parameters=[
-            openapi.Parameter('page', openapi.IN_QUERY, description="Page number", type=openapi.TYPE_INTEGER),
-            openapi.Parameter('page_size', openapi.IN_QUERY, description="Number of results per page",
-                              type=openapi.TYPE_INTEGER),
-        ]
+            openapi.Parameter('images', openapi.IN_FORM, description="Multiple image files", type=openapi.TYPE_FILE,
+                              required=False),
+            openapi.Parameter('image_types', openapi.IN_FORM, description="Comma-separated image types",
+                              type=openapi.TYPE_STRING, required=False),
+        ],
     )
     @action(detail=False, methods=['post'], url_path='translate')
     def create_translate(self, request):
         """Create Translation Application Form with optional images"""
         try:
-            form_kind = FormKind.objects.get(code=FormKind.TRANSLATE, is_active=True)
+            form_kind = FormKind.objects.get(name=FormKind.TRANSLATE, is_active=True)
         except FormKind.DoesNotExist:
             return Response(
                 {'error': f'Form kind "{FormKind.TRANSLATE}" not found or inactive'},
@@ -625,7 +625,7 @@ class ApplicantViewSet(viewsets.ModelViewSet):
     def create_langcourse(self, request):
         """Create Language Course Application Form with optional images"""
         try:
-            form_kind = FormKind.objects.get(code=FormKind.LANGUAGE_COURSE, is_active=True)
+            form_kind = FormKind.objects.get(name=FormKind.LANGUAGE_COURSE, is_active=True)
         except FormKind.DoesNotExist:
             return Response(
                 {'error': f'Form kind "{FormKind.LANGUAGE_COURSE}" not found or inactive'},
@@ -703,7 +703,7 @@ class ApplicantViewSet(viewsets.ModelViewSet):
     def create_universityfees(self, request):
         """Create University Fees Application Form with optional images"""
         try:
-            form_kind = FormKind.objects.get(code=FormKind.UNIVERSITY_FEES, is_active=True)
+            form_kind = FormKind.objects.get(name=FormKind.UNIVERSITY_FEES, is_active=True)
         except FormKind.DoesNotExist:
             return Response(
                 {'error': f'Form kind "{FormKind.UNIVERSITY_FEES}" not found or inactive'},
@@ -781,7 +781,7 @@ class ApplicantViewSet(viewsets.ModelViewSet):
     def create_publish(self, request):
         """Create Publish Research Application Form with optional images"""
         try:
-            form_kind = FormKind.objects.get(code=FormKind.PUBLISH_RESEARCH, is_active=True)
+            form_kind = FormKind.objects.get(name=FormKind.PUBLISH_RESEARCH, is_active=True)
         except FormKind.DoesNotExist:
             return Response(
                 {'error': f'Form kind "{FormKind.PUBLISH_RESEARCH}" not found or inactive'},
@@ -879,15 +879,14 @@ class ApplicantViewSet(viewsets.ModelViewSet):
         for kind in active_kinds:
             form_kinds_data.append({
                 'id': kind.id,
-                'code': kind.code,
                 'name': kind.name,
-                'description': kind.description,
+                'manager': kind.manager,
+                'phone': kind.phone,
                 'requires_university': kind.requires_university,
                 'requires_file_upload': kind.requires_file_upload,
                 'icon': kind.icon,
-                'display_order': kind.display_order,
             })
-            required_fields[kind.code] = kind.get_required_fields()
+            required_fields[kind.name] = kind.get_required_fields()
 
         return Response({
             'form_kinds': form_kinds_data,
@@ -933,7 +932,7 @@ class ApplicantViewSet(viewsets.ModelViewSet):
         for kind in FormKind.get_active_kinds():
             count = user_forms.filter(kind=kind).count()
             if count > 0:
-                kind_counts[kind.code] = {
+                kind_counts[kind.name] = {
                     'name': kind.name,
                     'count': count
                 }
@@ -1030,7 +1029,7 @@ class ApplicantViewSet(viewsets.ModelViewSet):
     @swagger_auto_schema(
         method='get',
         manual_parameters=[
-            openapi.Parameter('kind_code', openapi.IN_QUERY,
+            openapi.Parameter('kind_name', openapi.IN_QUERY,
                               description="Filter by form kind code (applicant, translate, etc.)",
                               type=openapi.TYPE_STRING),
             openapi.Parameter('status', openapi.IN_QUERY,
@@ -1141,7 +1140,7 @@ class ApplicantViewSet(viewsets.ModelViewSet):
         for kind in FormKind.objects.filter(is_active=True):
             count = queryset.filter(kind=kind).count()
             if count > 0:
-                kind_counts[kind.code] = {
+                kind_counts[kind.name] = {
                     'name': kind.name,
                     'count': count
                 }
@@ -1178,7 +1177,7 @@ class ApplicantViewSet(viewsets.ModelViewSet):
                 for choice in ApplicationForm.GOVERNORATE_CHOICES
             ],
             'form_kinds': [
-                {'value': kind.code, 'label': kind.name, 'id': kind.id}
+                {'value': kind.name, 'label': kind.name, 'id': kind.id}
                 for kind in FormKind.objects.filter(is_active=True)
             ]
         }
@@ -1208,7 +1207,7 @@ class ApplicantViewSet(viewsets.ModelViewSet):
     def get_filtered_applicant_forms(self, request):
         """Get filtered applicant forms with pagination"""
         try:
-            applicant_kind = FormKind.objects.get(code=FormKind.APPLICANT, is_active=True)
+            applicant_kind = FormKind.objects.get(name=FormKind.APPLICANT, is_active=True)
             queryset = self.filter_queryset(self.get_queryset().filter(kind=applicant_kind))
 
             # Apply pagination
@@ -1241,7 +1240,7 @@ class ApplicantViewSet(viewsets.ModelViewSet):
     def get_filtered_translate_forms(self, request):
         """Get filtered translation forms with pagination"""
         try:
-            translate_kind = FormKind.objects.get(code=FormKind.TRANSLATE, is_active=True)
+            translate_kind = FormKind.objects.get(name=FormKind.TRANSLATE, is_active=True)
             queryset = self.filter_queryset(self.get_queryset().filter(kind=translate_kind))
 
             # Apply pagination
@@ -1274,7 +1273,7 @@ class ApplicantViewSet(viewsets.ModelViewSet):
     def get_filtered_cancelcode_forms(self, request):
         """Get filtered cancel code forms with pagination"""
         try:
-            cancelcode_kind = FormKind.objects.get(code=FormKind.CANCEL_CODE, is_active=True)
+            cancelcode_kind = FormKind.objects.get(name=FormKind.CANCEL_CODE, is_active=True)
             queryset = self.filter_queryset(self.get_queryset().filter(kind=cancelcode_kind))
 
             # Apply pagination
@@ -1307,7 +1306,7 @@ class ApplicantViewSet(viewsets.ModelViewSet):
     def get_filtered_langcourse_forms(self, request):
         """Get filtered language course forms with pagination"""
         try:
-            langcourse_kind = FormKind.objects.get(code=FormKind.LANGUAGE_COURSE, is_active=True)
+            langcourse_kind = FormKind.objects.get(name=FormKind.LANGUAGE_COURSE, is_active=True)
             queryset = self.filter_queryset(self.get_queryset().filter(kind=langcourse_kind))
 
             # Apply pagination
@@ -1340,7 +1339,7 @@ class ApplicantViewSet(viewsets.ModelViewSet):
     def get_filtered_universityfees_forms(self, request):
         """Get filtered university fees forms with pagination"""
         try:
-            universityfees_kind = FormKind.objects.get(code=FormKind.UNIVERSITY_FEES, is_active=True)
+            universityfees_kind = FormKind.objects.get(name=FormKind.UNIVERSITY_FEES, is_active=True)
             queryset = self.filter_queryset(self.get_queryset().filter(kind=universityfees_kind))
 
             # Apply pagination
@@ -1373,7 +1372,7 @@ class ApplicantViewSet(viewsets.ModelViewSet):
     def get_filtered_publish_forms(self, request):
         """Get filtered publish research forms with pagination"""
         try:
-            publish_kind = FormKind.objects.get(code=FormKind.PUBLISH_RESEARCH, is_active=True)
+            publish_kind = FormKind.objects.get(name=FormKind.PUBLISH_RESEARCH, is_active=True)
             queryset = self.filter_queryset(self.get_queryset().filter(kind=publish_kind))
 
             # Apply pagination
@@ -1707,12 +1706,12 @@ class AdminDashboardView(APIView):
         # Applications by kind
         kind_counts = {}
         applications_by_kind = ApplicationForm.objects.values(
-            'kind__code', 'kind__name'
+            'kind__name', 'kind__manager'
         ).annotate(count=Count('id'))
 
         for item in applications_by_kind:
-            kind_counts[item['kind__code']] = {
-                'name': item['kind__name'],
+            kind_counts[item['kind__name']] = {
+                'name': item['kind__manager'],
                 'count': item['count']
             }
 

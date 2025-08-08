@@ -187,11 +187,11 @@ class ApplicationFormSerializer(serializers.ModelSerializer):
             'university_name', 'full_name', 'email', 'phone', 'department',
             'fees', 'status_display', 'completion_percentage', 'is_editable',
             'touch', 'submitted', 'approved', 'accepted', 'received', 'payoff',
-            'date_applied', 'time', 'updated_at'
+            'date_applied', 'data', 'updated_at'
         ]
         read_only_fields = [
-            'user', 'date_applied', 'time', 'updated_at', 'status_display',
-            'completion_percentage', 'is_editable', 'kind_display', 'kind_code',
+            'user', 'date_applied', 'data', 'updated_at', 'status_display',
+            'completion_percentage', 'is_editable', 'kind_display', 'kind_name',
             'university_name'
         ]
 
@@ -205,6 +205,26 @@ class ApplicationFormSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("This form type is currently not available.")
         return value
 
+class ApplicationImageSerializer(serializers.ModelSerializer):
+    image_url = serializers.SerializerMethodField()
+    file_size_mb = serializers.ReadOnlyField()
+
+    class Meta:
+        model = ApplicationImage
+        fields = [
+            'id', 'image', 'image_url', 'image_type', 'description',
+            'uploaded_at', 'file_size', 'file_size_mb', 'width', 'height'
+        ]
+        read_only_fields = ['id', 'uploaded_at', 'file_size', 'width', 'height']
+
+    def get_image_url(self, obj):
+        if obj.image:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.image.url)
+            return obj.image.url
+        return None
+
 
 # Specific serializers based on your old models - only required fields
 class ApplicantFormSerializer(serializers.ModelSerializer):
@@ -214,14 +234,15 @@ class ApplicantFormSerializer(serializers.ModelSerializer):
     Required fields: university, full_name, email, phone, degreenum, passport, degree,
                     department, deepdepartment, grad_univerBach, grad_univermaster, traker, pdf
     """
-
+    images = ApplicationImageSerializer(many=True, read_only=True)
     class Meta:
         model = ApplicationForm
         fields = [
-            'id', 'user', 'university', 'full_name', 'email', 'phone',
+            'id','kind', 'user', 'university', 'full_name', 'email', 'phone',
             'degreenum', 'passport', 'degree', 'department', 'deepdepartment',
             'grad_univerBach', 'grad_univermaster', 'traker', 'pdf', 'fees',
-            'touch', 'submitted', 'approved', 'accepted', 'date_applied'
+            'touch', 'submitted', 'approved', 'accepted', 'date_applied',
+            'images'
         ]
         read_only_fields = ['id', 'user', 'date_applied']
 
@@ -232,12 +253,14 @@ class CancelCodeFormSerializer(serializers.ModelSerializer):
 
     Required fields: university, full_name, email, phone, traker, pdf
     """
+    images = ApplicationImageSerializer(many=True, read_only=True)
 
     class Meta:
         model = ApplicationForm
         fields = [
-            'id', 'user', 'university', 'full_name', 'email', 'phone',
-            'traker', 'pdf', 'fees', 'touch', 'submitted', 'approved'
+            'id', 'kind','user', 'university', 'full_name', 'email', 'phone',
+            'traker', 'pdf', 'fees', 'touch', 'submitted', 'approved',
+            'images'
         ]
         read_only_fields = ['id', 'user']
 
@@ -252,7 +275,7 @@ class TranslateFormSerializer(serializers.ModelSerializer):
     class Meta:
         model = ApplicationForm
         fields = [
-            'id', 'user', 'full_name', 'email', 'phone', 'address',
+            'id','kind', 'user', 'full_name', 'email', 'phone', 'address',
             'nearestPoint', 'govern', 'fees', 'touch', 'received', 'submitted'
         ]
         read_only_fields = ['id', 'user']
@@ -264,12 +287,14 @@ class LangCourseFormSerializer(serializers.ModelSerializer):
 
     Required fields: university, full_name, email, phone, passport, traker, pdf
     """
+    images = ApplicationImageSerializer(many=True, read_only=True)
 
     class Meta:
         model = ApplicationForm
         fields = [
-            'id', 'user', 'university', 'full_name', 'email', 'phone',
-            'passport', 'traker', 'pdf', 'fees', 'touch', 'submitted', 'accepted'
+            'id','kind', 'user', 'university', 'full_name', 'email', 'phone',
+            'passport', 'traker', 'pdf', 'fees', 'touch', 'submitted', 'accepted',
+            'images'
         ]
         read_only_fields = ['id', 'user']
 
@@ -284,7 +309,7 @@ class UniversityFeesFormSerializer(serializers.ModelSerializer):
     class Meta:
         model = ApplicationForm
         fields = [
-            'id', 'user', 'university', 'full_name', 'email', 'phone',
+            'id','kind', 'user', 'university', 'full_name', 'email', 'phone',
             'department', 'univerFees', 'kind_fees', 'fees', 'touch',
             'payoff', 'submitted'
         ]
@@ -297,16 +322,65 @@ class PublishFormSerializer(serializers.ModelSerializer):
 
     Required fields: full_name, email, phone, department, pages, magazine, mushref
     """
+    images = ApplicationImageSerializer(many=True, read_only=True)
 
     class Meta:
         model = ApplicationForm
         fields = [
-            'id', 'user', 'full_name', 'email', 'phone', 'department',
-            'pages', 'magazine', 'mushref', 'publishResearch', 'time',
-            'stilal', 'international', 'fees', 'touch', 'payoff', 'submitted'
+            'id','kind', 'user', 'full_name', 'email', 'phone', 'department',
+            'pages', 'magazine', 'mushref', 'publishResearch', 'data',
+            'stilal', 'international', 'fees', 'touch', 'payoff', 'submitted',
+            'images'
         ]
-        read_only_fields = ['id', 'user', 'time']
+        read_only_fields = ['id', 'user', 'data']
 
+
+
+class Flight(serializers.ModelSerializer):
+    """
+        flight
+    """
+    images = ApplicationImageSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = ApplicationForm
+        fields = [
+            'id','kind', 'user', 'full_name', 'phone', 'passport' ,'govern','by'
+            ,'date','notes','touch', 'payoff', 'submitted',
+            'images'
+        ]
+        read_only_fields = ['id', 'user', 'data']
+
+
+class HigherEducationFile(serializers.ModelSerializer):
+    """
+    open file in the higher education
+    req :
+    """
+    images = ApplicationImageSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = ApplicationForm
+        fields = [
+            'id','kind', 'user', 'full_name', 'email', 'phone','touch', 'payoff',
+            'images'
+        ]
+        read_only_fields = ['id', 'user']
+
+class Rahgery(serializers.ModelSerializer):
+    """
+        flight
+    """
+    images = ApplicationImageSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = ApplicationForm
+        fields = [
+            'id','kind', 'user', 'full_name','email', 'phone', 'passport' , 'university', 'department', 'deepdepartment' ,
+            'touch', 'payoff', 'submitted',
+            'images'
+        ]
+        read_only_fields = ['id', 'user']
 
 # Admin serializers
 class ApplicationFormAdminSerializer(ApplicationFormSerializer):
@@ -378,26 +452,6 @@ class BulkStatusUpdateSerializer(serializers.Serializer):
 
         return value
 
-
-class ApplicationImageSerializer(serializers.ModelSerializer):
-    image_url = serializers.SerializerMethodField()
-    file_size_mb = serializers.ReadOnlyField()
-
-    class Meta:
-        model = ApplicationImage
-        fields = [
-            'id', 'image', 'image_url', 'image_type', 'description',
-            'uploaded_at', 'file_size', 'file_size_mb', 'width', 'height'
-        ]
-        read_only_fields = ['id', 'uploaded_at', 'file_size', 'width', 'height']
-
-    def get_image_url(self, obj):
-        if obj.image:
-            request = self.context.get('request')
-            if request:
-                return request.build_absolute_uri(obj.image.url)
-            return obj.image.url
-        return None
 
 
 class ApplicationFormWithImagesSerializer(ApplicationFormSerializer):
