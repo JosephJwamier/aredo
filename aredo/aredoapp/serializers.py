@@ -11,7 +11,7 @@ class AdminUserCreateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Users
-        fields = ['email', 'name', 'password', 'password_confirm', 'is_staff', 'is_superuser']
+        fields = ['phone_number', 'name', 'password', 'password_confirm', 'is_staff', 'is_superuser']
         extra_kwargs = {
             'password': {'write_only': True},
             'is_staff': {'default': False},
@@ -28,7 +28,7 @@ class AdminUserCreateSerializer(serializers.ModelSerializer):
 
         # Create user with permissions
         user = Users.objects.create_user(
-            email=validated_data['email'],
+            phone_number=validated_data['phone_number'],
             name=validated_data['name'],
             password=validated_data['password']
         )
@@ -46,8 +46,8 @@ class AdminUserUpdateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Users
-        fields = ['id', 'email', 'name', 'is_staff', 'is_superuser', 'is_active']
-        read_only_fields = ['id', 'email']  # Don't allow email changes
+        fields = ['id', 'phone_number', 'name', 'is_staff', 'is_superuser', 'is_active']
+        read_only_fields = ['id', 'phone_number']  # Don't allow email changes
 
     def validate(self, attrs):
         # Prevent admin from removing their own superuser status
@@ -64,24 +64,24 @@ class AdminUserListSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Users
-        fields = ['id', 'email', 'name', 'is_staff', 'is_superuser', 'is_active']
+        fields = ['id', 'phone_number', 'name', 'is_staff', 'is_superuser', 'is_active']
 
 
 
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = Users
-        fields = ['id', 'email', 'name']
+        fields = ['id', 'phone_number', 'name']
 
 class RegisterSerializer(serializers.ModelSerializer):
     class Meta:
         model = Users
-        fields = ['email', 'name', 'password']
+        fields = ['phone_number', 'name', 'password']
         extra_kwargs = {'password': {'write_only': True}}
 
     def create(self, validated_data):
         user = Users.objects.create_user(
-            email=validated_data['email'],
+            email=validated_data['phone_number'],
             name=validated_data['name'],
             password=validated_data['password']
         )
@@ -97,7 +97,7 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
         data['user'] = {
             "id": user.id,
             "username": user.name,
-            "email": user.email,
+            "phone_number": user.phone_number,
             "is_superuser": user.is_superuser,
             "is_staff": user.is_staff,
             # Add other fields as needed
@@ -146,9 +146,9 @@ class FormKindSerializer(serializers.ModelSerializer):
     class Meta:
         model = FormKind
         fields = [
-            'id', 'code', 'name', 'description', 'is_active',
+            'id', 'name', 'manager', 'phone', 'is_active',
             'requires_university', 'requires_file_upload', 'icon',
-            'display_order', 'required_fields', 'applications_count',
+             'required_fields', 'applications_count',
             'created_at', 'updated_at'
         ]
         read_only_fields = ['created_at', 'updated_at']
@@ -164,7 +164,7 @@ class FormKindListSerializer(serializers.ModelSerializer):
     class Meta:
         model = FormKind
         fields = [
-            'id', 'code', 'name', 'description', 'requires_university',
+            'id', 'name', 'manager', 'phone', 'requires_university',
             'requires_file_upload', 'icon', 'display_order'
         ]
 
@@ -173,8 +173,8 @@ class FormKindListSerializer(serializers.ModelSerializer):
 class ApplicationFormSerializer(serializers.ModelSerializer):
     """Base serializer for ApplicationForm with FormKind support"""
 
-    kind_display = serializers.CharField(source='kind.name', read_only=True)
-    kind_code = serializers.CharField(source='kind.code', read_only=True)
+    kind_display = serializers.CharField(source='kind.manager', read_only=True)
+    kind_name = serializers.CharField(source='kind.name', read_only=True)
     status_display = serializers.CharField(read_only=True)
     completion_percentage = serializers.SerializerMethodField()
     is_editable = serializers.BooleanField(read_only=True)
@@ -183,7 +183,7 @@ class ApplicationFormSerializer(serializers.ModelSerializer):
     class Meta:
         model = ApplicationForm
         fields = [
-            'id', 'kind', 'kind_display', 'kind_code', 'user', 'university',
+            'id', 'kind', 'kind_display', 'kind_name', 'user', 'university',
             'university_name', 'full_name', 'email', 'phone', 'department',
             'fees', 'status_display', 'completion_percentage', 'is_editable',
             'touch', 'submitted', 'approved', 'accepted', 'received', 'payoff',
@@ -340,8 +340,8 @@ class ApplicationFormAdminSerializer(ApplicationFormSerializer):
 class FormKindStatsSerializer(serializers.Serializer):
     """Serializer for form kind statistics"""
 
-    kind_code = serializers.CharField()
     kind_name = serializers.CharField()
+    kind_manager = serializers.CharField()
     total_applications = serializers.IntegerField()
     submitted_applications = serializers.IntegerField()
     approved_applications = serializers.IntegerField()

@@ -1,4 +1,9 @@
 # Create your views here.
+from datetime import datetime
+from django.utils.text import slugify
+from django.core.files.storage import default_storage
+from django.db import transaction
+
 from django_filters.rest_framework import DjangoFilterBackend
 from .filters import *
 from rest_framework_simplejwt.views import TokenObtainPairView
@@ -274,19 +279,161 @@ class ApplicantViewSet(viewsets.ModelViewSet):
             'results': serializer.data
         })
 
-    # APPLICANT ENDPOINTS
+    # Add parsers for file uploads at class level
+    parser_classes = [MultiPartParser, FormParser]
+
+    def generate_image_path(self, application, original_filename, image_type='general'):
+        """
+        Generate structured path: form_kind/username/date/image_type_timestamp.ext
+        Example: applicant/john_doe/2025-08-08/passport_20250808_143022.jpg
+        """
+        # Get file extension
+        file_ext = os.path.splitext(original_filename)[1].lower()
+
+        # Create safe username (slug format)
+        safe_username = slugify(application.user.username)
+
+        # Get form kind code
+        form_kind = application.kind.code if application.kind else 'unknown'
+
+        # Get current date
+        current_date = datetime.now()
+        date_str = current_date.strftime('%Y-%m-%d')
+        timestamp = current_date.strftime('%Y%m%d_%H%M%S_%f')[:17]  # Include microseconds for uniqueness
+
+        # Create structured path
+        custom_path = f"application_images/{form_kind}/{safe_username}/{date_str}/{image_type}_{timestamp}{file_ext}"
+
+        return custom_path
+
+    def handle_image_uploads(self, application, request):
+        """Helper method to handle image uploads for any form type"""
+        uploaded_files = request.FILES.getlist('images')
+        image_types = request.data.get('image_types', '').split(',') if request.data.get('image_types') else []
+
+        if not uploaded_files:
+            return [], []  # No images, no errors
+
+        # Define valid image types
+        valid_image_types = [
+            'passport', 'id_card', 'certificate', 'transcript',
+            'photo', 'document', 'signature', 'other'
+        ]
+
+        created_images = []
+        errors = []
+
+        for i, image_file in enumerate(uploaded_files):
+            try:
+                # Validate image
+                if not application.is_valid_image(image_file):
+                    errors.append(f"Invalid image format: {image_file.name}")
+                    continue
+
+                # Check file size (max 10MB)
+                if image_file.size > 10 * 1024 * 1024:
+                    errors.append(f"Image too large (max 10MB): {image_file.name}")
+                    continue
+
+                # Get and validate image type
+                image_type = 'other'  # default
+                if i < len(image_types) and image_types[i].strip():
+                    requested_type = image_types[i].strip().lower()
+                    if requested_type in valid_image_types:
+                        image_type = requested_type
+                    else:
+                        errors.append(f"Invalid image type '{requested_type}' for {image_file.name}, using 'other'")
+
+                # Generate custom path
+                custom_path = self.generate_image_path(
+                    application,
+                    image_file.name,
+                    image_type
+                )
+
+                # Save the file with custom path
+                saved_path = default_storage.save(custom_path, image_file)
+
+                # Create ApplicationImage record
+                app_image = ApplicationImage.objects.create(
+                    form=application,
+                    image=saved_path,
+                    image_type=image_type
+                )
+                created_images.append(app_image)
+
+                print(f"Image saved to: {saved_path}")
+
+            except Exception as e:
+                error_msg = f"Error processing {image_file.name}: {str(e)}"
+                errors.append(error_msg)
+                print(f"Upload error: {error_msg}")
+
+        return created_images, errors
+
+
+
+    # APPLICANT ENDPOINTS - Modified to handle images
     @swagger_auto_schema(
         method='post',
         request_body=ApplicantFormSerializer,
+        manual_parameters=[
+            openapi.Parameter('images', openapi.IN_FORM, description="Multiple image files", type=openapi.TYPE_FILE,
+                              required=False),
+            openapi.Parameter('image_types', openapi.IN_FORM, description="Comma-separated image types",
+                              type=openapi.TYPE_STRING, required=False),
+        ],
         responses={201: ApplicantFormSerializer, 400: 'Bad Request'},
-        operation_description="Create a new Applicant form",
+        operation_description="Create a new Applicant form with optional images",
         tags=['Applicant Forms']
     )
     @action(detail=False, methods=['post'], url_path='applicant')
     def create_applicant(self, request):
-        """Create Applicant Application Form"""
-        return self._create_form_by_code(request, FormKind.APPLICANT, ApplicantFormSerializer)
+        """Create Applicant Application Form with optional images"""
+        try:
+            form_kind = FormKind.objects.get(code=FormKind.APPLICANT, is_active=True)
+        except FormKind.DoesNotExist:
+            return Response(
+                {'error': f'Form kind "{FormKind.APPLICANT}" not found or inactive'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
+        # Prepare form data
+        data = request.data.copy()
+        data['kind'] = form_kind.id
+
+        # Remove image-related fields from form data
+        form_data = {k: v for k, v in data.items() if k not in ['images', 'image_types']}
+
+        with transaction.atomic():
+            # Create the form
+            serializer = ApplicantFormSerializer(data=form_data)
+            if serializer.is_valid():
+                application = serializer.save(user=request.user)
+
+                # Handle image uploads if present
+                created_images, image_errors = self.handle_image_uploads(application, request)
+
+                # Prepare response
+                response_data = {
+                    'form': serializer.data,
+                    'message': 'Applicant form created successfully'
+                }
+
+                if created_images:
+                    image_serializer = ApplicationImageSerializer(
+                        created_images, many=True, context={'request': request}
+                    )
+                    response_data['images'] = image_serializer.data
+                    response_data['images_count'] = len(created_images)
+                    response_data['message'] += f' with {len(created_images)} images'
+
+                if image_errors:
+                    response_data['image_warnings'] = image_errors
+
+                return Response(response_data, status=status.HTTP_201_CREATED)
+            else:
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     @swagger_auto_schema(
         method='get',
         responses={200: ApplicantFormSerializer(many=True)},
@@ -307,14 +454,64 @@ class ApplicantViewSet(viewsets.ModelViewSet):
     @swagger_auto_schema(
         method='post',
         request_body=CancelCodeFormSerializer,
+        manual_parameters=[
+            openapi.Parameter('images', openapi.IN_FORM, description="Multiple image files", type=openapi.TYPE_FILE,
+                              required=False),
+            openapi.Parameter('image_types', openapi.IN_FORM, description="Comma-separated image types",
+                              type=openapi.TYPE_STRING, required=False),
+        ],
         responses={201: CancelCodeFormSerializer, 400: 'Bad Request'},
         operation_description="Create a new Cancel Code form",
-        tags=['Cancel Code Forms']
+        tags=['Cancel Code Forms'],
     )
+
     @action(detail=False, methods=['post'], url_path='cancelcode')
     def create_cancelcode(self, request):
-        """Create Cancel Code Application Form"""
-        return self._create_form_by_code(request, FormKind.CANCEL_CODE, CancelCodeFormSerializer)
+        """Create Cancel Code Application Form with optional images"""
+        try:
+            form_kind = FormKind.objects.get(code=FormKind.CANCEL_CODE, is_active=True)
+        except FormKind.DoesNotExist:
+            return Response(
+                {'error': f'Form kind "{FormKind.CANCEL_CODE}" not found or inactive'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Prepare form data
+        data = request.data.copy()
+        data['kind'] = form_kind.id
+
+        # Remove image-related fields from form data
+        form_data = {k: v for k, v in data.items() if k not in ['images', 'image_types']}
+
+        with (transaction.atomic()):
+            # Create the form
+            serializer = CancelCodeFormSerializer(data=form_data)
+            if serializer.is_valid():
+                application = serializer.save(user=request.user)
+
+                # Handle image uploads if present
+                created_images, image_errors = self.handle_image_uploads(application, request)
+
+                # Prepare response
+                response_data = {
+                    'form': serializer.data,
+                    'message': 'Cancel Code form created successfully'
+                }
+
+                if created_images:
+                    image_serializer = ApplicationImageSerializer(
+                        created_images, many=True, context={'request': request}
+                    )
+                    response_data['images'] = image_serializer.data
+                    response_data['images_count'] = len(created_images)
+                    response_data['message'] += f' with {len(created_images)} images'
+
+                if image_errors:
+                    response_data['image_warnings'] = image_errors
+
+                return Response(response_data, status=status.HTTP_201_CREATED)
+            else:
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     @swagger_auto_schema(
         method='get',
@@ -322,10 +519,11 @@ class ApplicantViewSet(viewsets.ModelViewSet):
         operation_description="List all Cancel Code forms for the authenticated user with pagination",
         tags=['Cancel Code Forms'],
         manual_parameters=[
-            openapi.Parameter('page', openapi.IN_QUERY, description="Page number", type=openapi.TYPE_INTEGER),
-            openapi.Parameter('page_size', openapi.IN_QUERY, description="Number of results per page",
-                              type=openapi.TYPE_INTEGER),
-        ]
+            openapi.Parameter('images', openapi.IN_FORM, description="Multiple image files", type=openapi.TYPE_FILE,
+                              required=False),
+            openapi.Parameter('image_types', openapi.IN_FORM, description="Comma-separated image types",
+                              type=openapi.TYPE_STRING, required=False),
+        ],
     )
     @action(detail=False, methods=['get'], url_path='cancelcode')
     def list_cancelcode(self, request):
@@ -338,12 +536,60 @@ class ApplicantViewSet(viewsets.ModelViewSet):
         request_body=TranslateFormSerializer,
         responses={201: TranslateFormSerializer, 400: 'Bad Request'},
         operation_description="Create a new Translation form",
-        tags=['Translation Forms']
+        tags=['Translation Forms'],
+        manual_parameters=[
+            openapi.Parameter('page', openapi.IN_QUERY, description="Page number", type=openapi.TYPE_INTEGER),
+            openapi.Parameter('page_size', openapi.IN_QUERY, description="Number of results per page",
+                              type=openapi.TYPE_INTEGER),
+        ]
     )
     @action(detail=False, methods=['post'], url_path='translate')
     def create_translate(self, request):
-        """Create Translation Application Form"""
-        return self._create_form_by_code(request, FormKind.TRANSLATE, TranslateFormSerializer)
+        """Create Translation Application Form with optional images"""
+        try:
+            form_kind = FormKind.objects.get(code=FormKind.TRANSLATE, is_active=True)
+        except FormKind.DoesNotExist:
+            return Response(
+                {'error': f'Form kind "{FormKind.TRANSLATE}" not found or inactive'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Prepare form data
+        data = request.data.copy()
+        data['kind'] = form_kind.id
+
+        # Remove image-related fields from form data
+        form_data = {k: v for k, v in data.items() if k not in ['images', 'image_types']}
+
+        with transaction.atomic():
+            # Create the form
+            serializer = TranslateFormSerializer(data=form_data)
+            if serializer.is_valid():
+                application = serializer.save(user=request.user)
+
+                # Handle image uploads if present
+                created_images, image_errors = self.handle_image_uploads(application, request)
+
+                # Prepare response
+                response_data = {
+                    'form': serializer.data,
+                    'message': 'Translation form created successfully'
+                }
+
+                if created_images:
+                    image_serializer = ApplicationImageSerializer(
+                        created_images, many=True, context={'request': request}
+                    )
+                    response_data['images'] = image_serializer.data
+                    response_data['images_count'] = len(created_images)
+                    response_data['message'] += f' with {len(created_images)} images'
+
+                if image_errors:
+                    response_data['image_warnings'] = image_errors
+
+                return Response(response_data, status=status.HTTP_201_CREATED)
+            else:
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     @swagger_auto_schema(
         method='get',
@@ -367,12 +613,61 @@ class ApplicantViewSet(viewsets.ModelViewSet):
         request_body=LangCourseFormSerializer,
         responses={201: LangCourseFormSerializer, 400: 'Bad Request'},
         operation_description="Create a new Language Course form",
-        tags=['Language Course Forms']
+        tags=['Language Course Forms'],
+        manual_parameters=[
+            openapi.Parameter('images', openapi.IN_FORM, description="Multiple image files", type=openapi.TYPE_FILE,
+                              required=False),
+            openapi.Parameter('image_types', openapi.IN_FORM, description="Comma-separated image types",
+                              type=openapi.TYPE_STRING, required=False),
+        ],
     )
     @action(detail=False, methods=['post'], url_path='langcourse')
     def create_langcourse(self, request):
-        """Create Language Course Application Form"""
-        return self._create_form_by_code(request, FormKind.LANGUAGE_COURSE, LangCourseFormSerializer)
+        """Create Language Course Application Form with optional images"""
+        try:
+            form_kind = FormKind.objects.get(code=FormKind.LANGUAGE_COURSE, is_active=True)
+        except FormKind.DoesNotExist:
+            return Response(
+                {'error': f'Form kind "{FormKind.LANGUAGE_COURSE}" not found or inactive'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Prepare form data
+        data = request.data.copy()
+        data['kind'] = form_kind.id
+
+        # Remove image-related fields from form data
+        form_data = {k: v for k, v in data.items() if k not in ['images', 'image_types']}
+
+        with transaction.atomic():
+            # Create the form
+            serializer = LangCourseFormSerializer(data=form_data)
+            if serializer.is_valid():
+                application = serializer.save(user=request.user)
+
+                # Handle image uploads if present
+                created_images, image_errors = self.handle_image_uploads(application, request)
+
+                # Prepare response
+                response_data = {
+                    'form': serializer.data,
+                    'message': 'Language Course form created successfully'
+                }
+
+                if created_images:
+                    image_serializer = ApplicationImageSerializer(
+                        created_images, many=True, context={'request': request}
+                    )
+                    response_data['images'] = image_serializer.data
+                    response_data['images_count'] = len(created_images)
+                    response_data['message'] += f' with {len(created_images)} images'
+
+                if image_errors:
+                    response_data['image_warnings'] = image_errors
+
+                return Response(response_data, status=status.HTTP_201_CREATED)
+            else:
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     @swagger_auto_schema(
         method='get',
@@ -396,12 +691,61 @@ class ApplicantViewSet(viewsets.ModelViewSet):
         request_body=UniversityFeesFormSerializer,
         responses={201: UniversityFeesFormSerializer, 400: 'Bad Request'},
         operation_description="Create a new University Fees form",
-        tags=['University Fees Forms']
+        tags=['University Fees Forms'],
+        manual_parameters=[
+            openapi.Parameter('images', openapi.IN_FORM, description="Multiple image files", type=openapi.TYPE_FILE,
+                              required=False),
+            openapi.Parameter('image_types', openapi.IN_FORM, description="Comma-separated image types",
+                              type=openapi.TYPE_STRING, required=False),
+        ],
     )
     @action(detail=False, methods=['post'], url_path='universityfees')
     def create_universityfees(self, request):
-        """Create University Fees Application Form"""
-        return self._create_form_by_code(request, FormKind.UNIVERSITY_FEES, UniversityFeesFormSerializer)
+        """Create University Fees Application Form with optional images"""
+        try:
+            form_kind = FormKind.objects.get(code=FormKind.UNIVERSITY_FEES, is_active=True)
+        except FormKind.DoesNotExist:
+            return Response(
+                {'error': f'Form kind "{FormKind.UNIVERSITY_FEES}" not found or inactive'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Prepare form data
+        data = request.data.copy()
+        data['kind'] = form_kind.id
+
+        # Remove image-related fields from form data
+        form_data = {k: v for k, v in data.items() if k not in ['images', 'image_types']}
+
+        with transaction.atomic():
+            # Create the form
+            serializer = UniversityFeesFormSerializer(data=form_data)
+            if serializer.is_valid():
+                application = serializer.save(user=request.user)
+
+                # Handle image uploads if present
+                created_images, image_errors = self.handle_image_uploads(application, request)
+
+                # Prepare response
+                response_data = {
+                    'form': serializer.data,
+                    'message': 'University Fees form created successfully'
+                }
+
+                if created_images:
+                    image_serializer = ApplicationImageSerializer(
+                        created_images, many=True, context={'request': request}
+                    )
+                    response_data['images'] = image_serializer.data
+                    response_data['images_count'] = len(created_images)
+                    response_data['message'] += f' with {len(created_images)} images'
+
+                if image_errors:
+                    response_data['image_warnings'] = image_errors
+
+                return Response(response_data, status=status.HTTP_201_CREATED)
+            else:
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     @swagger_auto_schema(
         method='get',
@@ -425,12 +769,61 @@ class ApplicantViewSet(viewsets.ModelViewSet):
         request_body=PublishFormSerializer,
         responses={201: PublishFormSerializer, 400: 'Bad Request'},
         operation_description="Create a new Publish Research form",
-        tags=['Publish Research Forms']
+        tags=['Publish Research Forms'],
+        manual_parameters=[
+            openapi.Parameter('images', openapi.IN_FORM, description="Multiple image files", type=openapi.TYPE_FILE,
+                              required=False),
+            openapi.Parameter('image_types', openapi.IN_FORM, description="Comma-separated image types",
+                              type=openapi.TYPE_STRING, required=False),
+        ],
     )
     @action(detail=False, methods=['post'], url_path='publish')
     def create_publish(self, request):
-        """Create Publish Research Application Form"""
-        return self._create_form_by_code(request, FormKind.PUBLISH_RESEARCH, PublishFormSerializer)
+        """Create Publish Research Application Form with optional images"""
+        try:
+            form_kind = FormKind.objects.get(code=FormKind.PUBLISH_RESEARCH, is_active=True)
+        except FormKind.DoesNotExist:
+            return Response(
+                {'error': f'Form kind "{FormKind.PUBLISH_RESEARCH}" not found or inactive'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Prepare form data
+        data = request.data.copy()
+        data['kind'] = form_kind.id
+
+        # Remove image-related fields from form data
+        form_data = {k: v for k, v in data.items() if k not in ['images', 'image_types']}
+
+        with transaction.atomic():
+            # Create the form
+            serializer = PublishFormSerializer(data=form_data)
+            if serializer.is_valid():
+                application = serializer.save(user=request.user)
+
+                # Handle image uploads if present
+                created_images, image_errors = self.handle_image_uploads(application, request)
+
+                # Prepare response
+                response_data = {
+                    'form': serializer.data,
+                    'message': 'Publish Research form created successfully'
+                }
+
+                if created_images:
+                    image_serializer = ApplicationImageSerializer(
+                        created_images, many=True, context={'request': request}
+                    )
+                    response_data['images'] = image_serializer.data
+                    response_data['images_count'] = len(created_images)
+                    response_data['message'] += f' with {len(created_images)} images'
+
+                if image_errors:
+                    response_data['image_warnings'] = image_errors
+
+                return Response(response_data, status=status.HTTP_201_CREATED)
+            else:
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     @swagger_auto_schema(
         method='get',

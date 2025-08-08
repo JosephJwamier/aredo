@@ -7,36 +7,33 @@ import os
 from PIL import Image
 
 class CustomUserManager(BaseUserManager):
-    def create_user(self, email, password=None, **extra_fields):
-        if not email:
-            raise ValueError('Email is required')
-        email = self.normalize_email(email)
-        user = self.model(email=email, **extra_fields)
+    def create_user(self, phone_number, password=None, **extra_fields):
+        if not phone_number:
+            raise ValueError('Phone number is required')
+        user = self.model(phone_number=phone_number, **extra_fields)
         user.set_password(password)
         user.save(using=self._db)
         return user
 
-    def create_superuser(self, email, password=None, **extra_fields):
+    def create_superuser(self, phone_number, password=None, **extra_fields):
         extra_fields.setdefault('is_staff', True)
         extra_fields.setdefault('is_superuser', True)
-        return self.create_user(email, password, **extra_fields)
+        return self.create_user(phone_number, password, **extra_fields)
 
 class Users(AbstractBaseUser, PermissionsMixin):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    email = models.EmailField(unique=True)
+    phone_number = models.CharField(max_length=15, unique=True)
     name = models.CharField(max_length=100)
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
 
     objects = CustomUserManager()
 
-    USERNAME_FIELD = 'email'
+    USERNAME_FIELD = 'phone_number'
     REQUIRED_FIELDS = ['name']
 
     def __str__(self):
-        return self.email
-
-
+        return self.phone_number
 
 class Country(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -90,16 +87,16 @@ class FormKind(models.Model):
 
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    code = models.CharField(
+    name = models.CharField(
         max_length=30,
         unique=True,
         help_text="Unique identifier for the form type"
     )
-    name = models.CharField(
+    manager = models.CharField(
         max_length=100,
         help_text="Display name for the form type"
     )
-    description = models.TextField(
+    phone = models.TextField(
         blank=True,
         help_text="Detailed description of what this form type is for"
     )
@@ -120,17 +117,14 @@ class FormKind(models.Model):
         blank=True,
         help_text="Icon class or name for UI display"
     )
-    display_order = models.PositiveIntegerField(
-        default=0,
-        help_text="Order in which to display this form type"
-    )
+
 
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ['display_order', 'name']
+        ordering = [ 'name']
         verbose_name = 'Form Kind'
         verbose_name_plural = 'Form Kinds'
 
