@@ -316,8 +316,9 @@ class ApplicantViewSet(viewsets.ModelViewSet):
 
         # Define valid image types
         valid_image_types = [
-            'passport', 'id_card', 'certificate', 'transcript',
-            'photo', 'document', 'signature', 'other'
+            'passport', 'perssonal_pic', 'certificate', 'cv','masterCertificate'
+            'masterCv', 'rahgeryform', 'langCertificate', 'ID_front','ID_back','university_accept',
+            'form_accept','no_objection','rahgery_form'
         ]
 
         created_images = []
@@ -455,11 +456,26 @@ class ApplicantViewSet(viewsets.ModelViewSet):
         method='post',
         request_body=CancelCodeFormSerializer,
         manual_parameters=[
-            openapi.Parameter('images', openapi.IN_FORM, description="Multiple image files", type=openapi.TYPE_FILE,
-                              required=False),
-            openapi.Parameter('image_types', openapi.IN_FORM, description="Comma-separated image types",
-                              type=openapi.TYPE_STRING, required=False),
+            openapi.Parameter(
+                'images',
+                openapi.IN_FORM,
+                description="Multiple image files (JPEG, PNG, GIF, etc.)",
+                type=openapi.TYPE_ARRAY,
+                items=openapi.Items(type=openapi.TYPE_FILE),
+                required=False,
+                # This indicates multiple files can be uploaded
+                collection_format='multi'
+            ),
+            openapi.Parameter(
+                'image_types',
+                openapi.IN_FORM,
+                description="Comma-separated image types corresponding to uploaded images ('passport', 'perssonal_pic', 'certificate', 'cv','masterCertificate','masterCv', 'rahgeryform', 'langCertificate', 'ID_front','ID_back','university_accept','form_accept','no_objection','rahgery_form')",
+                type=openapi.TYPE_STRING,
+                required=False,
+                example="before,after,damage"
+            ),
         ],
+        consumes=['multipart/form-data'],
         responses={201: CancelCodeFormSerializer, 400: 'Bad Request'},
         operation_description="Create a new Cancel Code form",
         tags=['Cancel Code Forms'],
@@ -1445,105 +1461,8 @@ class ApplicantViewSet(viewsets.ModelViewSet):
             'results': serializer.data
         })
 
-    parser_classes = [MultiPartParser, FormParser]  # Add this for file uploads
 
-    @swagger_auto_schema(
-        method='post',
-        manual_parameters=[
-            openapi.Parameter(
-                'images',
-                openapi.IN_FORM,
-                description="Multiple image files",
-                type=openapi.TYPE_FILE,
-                required=False
-            ),
-            openapi.Parameter(
-                'image_types',
-                openapi.IN_FORM,
-                description="Comma-separated image types corresponding to uploaded images",
-                type=openapi.TYPE_STRING,
-                required=False
-            ),
-        ],
-        responses={201: ApplicationFormWithImagesSerializer},
-        operation_description="Upload images for an application form",
-        tags=['Application Images']
-    )
-    @action(detail=True, methods=['post'], url_path='upload-images')
-    def upload_images(self, request, pk=None):
-        """Upload multiple images for a specific application"""
-        application = self.get_object()
 
-        # Check if user owns this application
-        if application.user != request.user:
-            return Response(
-                {'error': 'Permission denied'},
-                status=status.HTTP_403_FORBIDDEN
-            )
-
-        # Get uploaded files
-        uploaded_files = request.FILES.getlist('images')
-        image_types = request.data.get('image_types', '').split(',')
-
-        if not uploaded_files:
-            return Response(
-                {'error': 'No images provided'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        # Validate and save images
-        created_images = []
-        errors = []
-
-        for i, image_file in enumerate(uploaded_files):
-            try:
-                # Validate image
-                if not application.is_valid_image(image_file):
-                    errors.append(f"Invalid image format: {image_file.name}")
-                    continue
-
-                # Check file size (max 10MB)
-                if image_file.size > 10 * 1024 * 1024:
-                    errors.append(f"Image too large (max 10MB): {image_file.name}")
-                    continue
-
-                # Get image type if provided
-                image_type = 'other'
-                if i < len(image_types) and image_types[i].strip():
-                    image_type = image_types[i].strip()
-
-                # Create ApplicationImage
-                app_image = ApplicationImage.objects.create(
-                    form=application,
-                    image=image_file,
-                    image_type=image_type
-                )
-                created_images.append(app_image)
-
-            except Exception as e:
-                errors.append(f"Error processing {image_file.name}: {str(e)}")
-
-        # Prepare response
-        if created_images:
-            serializer = ApplicationImageSerializer(
-                created_images,
-                many=True,
-                context={'request': request}
-            )
-            response_data = {
-                'message': f'{len(created_images)} images uploaded successfully',
-                'images': serializer.data
-            }
-
-            if errors:
-                response_data['warnings'] = errors
-
-            return Response(response_data, status=status.HTTP_201_CREATED)
-        else:
-            return Response(
-                {'error': 'No images could be processed', 'details': errors},
-                status=status.HTTP_400_BAD_REQUEST
-            )
 
     @swagger_auto_schema(
         method='get',
