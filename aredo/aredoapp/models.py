@@ -76,6 +76,11 @@ class FormKind(models.Model):
     UNIVERSITY_FEES = 'universityfees'
     PUBLISH_RESEARCH = 'publish'
     DELVARY = 'delvary'
+    FLIGHT = 'flight'
+    TRANSLATE_IRAQ = 'translate iraq'
+    ISTALAL = 'istalal'
+    RAHGERY = 'rahgery'
+    HIGHER_EDUCATION = 'higher education'
     FORM_TYPE_CHOICES = [
         (APPLICANT, 'Applicant'),
         (CANCEL_CODE, 'Cancel Code'),
