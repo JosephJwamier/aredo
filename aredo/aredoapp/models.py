@@ -75,7 +75,7 @@ class FormKind(models.Model):
     LANGUAGE_COURSE = 'langcourse'
     UNIVERSITY_FEES = 'universityfees'
     PUBLISH_RESEARCH = 'publish'
-
+    DELVARY = 'delvary'
     FORM_TYPE_CHOICES = [
         (APPLICANT, 'Applicant'),
         (CANCEL_CODE, 'Cancel Code'),
@@ -319,7 +319,8 @@ class ApplicationForm(models.Model):
 
     # Timestamps
     date_applied = models.DateTimeField(auto_now_add=True)
-    data = models.DateTimeField(auto_now_add=True)
+    date = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def save_images(self, image_files):

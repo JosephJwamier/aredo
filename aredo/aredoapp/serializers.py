@@ -187,7 +187,7 @@ class ApplicationFormSerializer(serializers.ModelSerializer):
             'university_name', 'full_name', 'email', 'phone', 'department',
             'fees', 'status_display', 'completion_percentage', 'is_editable',
             'touch', 'submitted', 'approved', 'accepted', 'received', 'payoff',
-            'date_applied', 'data', 'updated_at'
+            'date_applied', 'date', 'updated_at'
         ]
         read_only_fields = [
             'user', 'date_applied', 'data', 'updated_at', 'status_display',
@@ -328,7 +328,7 @@ class PublishFormSerializer(serializers.ModelSerializer):
         model = ApplicationForm
         fields = [
             'id','kind', 'user', 'full_name', 'email', 'phone', 'department',
-            'pages', 'magazine', 'mushref', 'publishResearch', 'data',
+            'pages', 'magazine', 'mushref', 'publishResearch', 'date',
             'stilal', 'international', 'fees', 'touch', 'payoff', 'submitted',
             'images'
         ]
@@ -338,7 +338,7 @@ class PublishFormSerializer(serializers.ModelSerializer):
 
 class Flight(serializers.ModelSerializer):
     """
-        flight
+        flight حجز تذكرة طيران
     """
     images = ApplicationImageSerializer(many=True, read_only=True)
 
@@ -355,7 +355,7 @@ class Flight(serializers.ModelSerializer):
 class HigherEducationFile(serializers.ModelSerializer):
     """
     open file in the higher education
-    req :
+    req :فتح ملف في وزارة التعليم
     """
     images = ApplicationImageSerializer(many=True, read_only=True)
 
@@ -369,7 +369,7 @@ class HigherEducationFile(serializers.ModelSerializer):
 
 class Rahgery(serializers.ModelSerializer):
     """
-        flight
+        استخراج كود راهكيري
     """
     images = ApplicationImageSerializer(many=True, read_only=True)
 
@@ -379,6 +379,55 @@ class Rahgery(serializers.ModelSerializer):
             'id','kind', 'user', 'full_name','email', 'phone', 'passport' , 'university', 'department', 'deepdepartment' ,
             'touch', 'payoff', 'submitted',
             'images'
+        ]
+        read_only_fields = ['id', 'user']
+
+
+class Istalal(serializers.ModelSerializer):
+    """
+        استلال البحث
+    """
+    images = ApplicationImageSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = ApplicationForm
+        fields = [
+            'id','kind', 'user', 'full_name','email', 'phone', 'pdf',
+            'touch', 'payoff', 'submitted','images'
+
+        ]
+        read_only_fields = ['id', 'user']
+
+
+class Delvary(serializers.ModelSerializer):
+    """
+        توصيل الوثائق داخل العراق
+    """
+    images = ApplicationImageSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = ApplicationForm
+        fields = [
+            'id','kind', 'user', 'full_name','phone', 'nearestPoint','address','govern',
+            'touch', 'payoff', 'submitted','images'
+
+        ]
+        read_only_fields = ['id', 'user']
+
+
+
+class TranslateIraq(serializers.ModelSerializer):
+    """
+        الترجمة لكورس اللغة والوثيقة داخل العراق
+    """
+    images = ApplicationImageSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = ApplicationForm
+        fields = [
+            'id','kind', 'user', 'full_name','phone', 'nearestPoint','address','govern',
+            'touch', 'payoff', 'submitted','images'
+
         ]
         read_only_fields = ['id', 'user']
 

@@ -372,9 +372,7 @@ class ApplicantViewSet(viewsets.ModelViewSet):
 
         return created_images, errors
 
-
-
-    # APPLICANT ENDPOINTS - Modified to handle images
+    # APPLICANT ENDPOINTS - Updated with filters and statistics
     @swagger_auto_schema(
         method='post',
         request_body=ApplicantFormSerializer,
@@ -435,23 +433,60 @@ class ApplicantViewSet(viewsets.ModelViewSet):
                 return Response(response_data, status=status.HTTP_201_CREATED)
             else:
                 return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
     @swagger_auto_schema(
         method='get',
         responses={200: ApplicantFormSerializer(many=True)},
-        operation_description="List all Applicant forms for the authenticated user with pagination",
+        operation_description="List all Applicant forms with filters and search",
         tags=['Applicant Forms'],
         manual_parameters=[
+            # Pagination
             openapi.Parameter('page', openapi.IN_QUERY, description="Page number", type=openapi.TYPE_INTEGER),
             openapi.Parameter('page_size', openapi.IN_QUERY, description="Number of results per page",
                               type=openapi.TYPE_INTEGER),
+
+            # Filters
+            openapi.Parameter('submitted', openapi.IN_QUERY, description="Filter by submitted status (true/false)",
+                              type=openapi.TYPE_BOOLEAN),
+            openapi.Parameter('payoff', openapi.IN_QUERY, description="Filter by payoff status (true/false)",
+                              type=openapi.TYPE_BOOLEAN),
+            openapi.Parameter('date_from', openapi.IN_QUERY, description="Filter from date (YYYY-MM-DD)",
+                              type=openapi.TYPE_STRING),
+            openapi.Parameter('date_to', openapi.IN_QUERY, description="Filter to date (YYYY-MM-DD)",
+                              type=openapi.TYPE_STRING),
+
+            # Search
+            openapi.Parameter('search', openapi.IN_QUERY, description="Search in full_name, phone, email",
+                              type=openapi.TYPE_STRING),
+
+            # Ordering
+            openapi.Parameter('ordering', openapi.IN_QUERY, description="Order by field (prefix with - for desc)",
+                              type=openapi.TYPE_STRING),
+
+            # Statistics
+            openapi.Parameter('include_stats', openapi.IN_QUERY, description="Include statistics in response",
+                              type=openapi.TYPE_BOOLEAN),
         ]
     )
-    @action(detail=False, methods=['get'], url_path='applicant')
+    @action(detail=False, methods=['get'], url_path='applicant/k')
     def list_applicant(self, request):
-        """List Applicant Application Forms"""
-        return self._list_forms_by_code(request, FormKind.APPLICANT, ApplicantFormSerializer)
+        """List Applicant Application Forms with filters and statistics"""
+        return self._list_forms_with_filters(request, FormKind.APPLICANT, ApplicantFormSerializer,
+                                             search_fields=['full_name', 'phone', 'email'],
+                                             filter_fields=['submitted', 'payoff'])
 
-    # CANCEL CODE ENDPOINTS
+    @swagger_auto_schema(
+        method='get',
+        responses={200: 'Statistics'},
+        operation_description="Get Applicant forms statistics",
+        tags=['Applicant Forms'],
+    )
+    @action(detail=False, methods=['get'], url_path='applicant/stats')
+    def applicant_stats(self, request):
+        """Get Applicant forms statistics"""
+        return self._get_form_stats(request, FormKind.APPLICANT)
+
+    # CANCEL CODE ENDPOINTS - Updated with filters and statistics
     @swagger_auto_schema(
         method='post',
         request_body=CancelCodeFormSerializer,
@@ -463,7 +498,6 @@ class ApplicantViewSet(viewsets.ModelViewSet):
                 type=openapi.TYPE_ARRAY,
                 items=openapi.Items(type=openapi.TYPE_FILE),
                 required=False,
-                # This indicates multiple files can be uploaded
                 collection_format='multi'
             ),
             openapi.Parameter(
@@ -480,7 +514,6 @@ class ApplicantViewSet(viewsets.ModelViewSet):
         operation_description="Create a new Cancel Code form",
         tags=['Cancel Code Forms'],
     )
-
     @action(detail=False, methods=['post'], url_path='cancelcode')
     def create_cancelcode(self, request):
         """Create Cancel Code Application Form with optional images"""
@@ -499,7 +532,7 @@ class ApplicantViewSet(viewsets.ModelViewSet):
         # Remove image-related fields from form data
         form_data = {k: v for k, v in data.items() if k not in ['images', 'image_types']}
 
-        with (transaction.atomic()):
+        with transaction.atomic():
             # Create the form
             serializer = CancelCodeFormSerializer(data=form_data)
             if serializer.is_valid():
@@ -532,20 +565,56 @@ class ApplicantViewSet(viewsets.ModelViewSet):
     @swagger_auto_schema(
         method='get',
         responses={200: CancelCodeFormSerializer(many=True)},
-        operation_description="List all Cancel Code forms for the authenticated user with pagination",
+        operation_description="List all Cancel Code forms with filters and search",
         tags=['Cancel Code Forms'],
         manual_parameters=[
+            # Pagination
             openapi.Parameter('page', openapi.IN_QUERY, description="Page number", type=openapi.TYPE_INTEGER),
             openapi.Parameter('page_size', openapi.IN_QUERY, description="Number of results per page",
                               type=openapi.TYPE_INTEGER),
+
+            # Filters
+            openapi.Parameter('submitted', openapi.IN_QUERY, description="Filter by submitted status (true/false)",
+                              type=openapi.TYPE_BOOLEAN),
+            openapi.Parameter('payoff', openapi.IN_QUERY, description="Filter by payoff status (true/false)",
+                              type=openapi.TYPE_BOOLEAN),
+            openapi.Parameter('date_from', openapi.IN_QUERY, description="Filter from date (YYYY-MM-DD)",
+                              type=openapi.TYPE_STRING),
+            openapi.Parameter('date_to', openapi.IN_QUERY, description="Filter to date (YYYY-MM-DD)",
+                              type=openapi.TYPE_STRING),
+
+            # Search
+            openapi.Parameter('search', openapi.IN_QUERY, description="Search in full_name, phone, email",
+                              type=openapi.TYPE_STRING),
+
+            # Ordering
+            openapi.Parameter('ordering', openapi.IN_QUERY, description="Order by field (prefix with - for desc)",
+                              type=openapi.TYPE_STRING),
+
+            # Statistics
+            openapi.Parameter('include_stats', openapi.IN_QUERY, description="Include statistics in response",
+                              type=openapi.TYPE_BOOLEAN),
         ]
     )
     @action(detail=False, methods=['get'], url_path='cancelcode')
     def list_cancelcode(self, request):
-        """List Cancel Code Application Forms"""
-        return self._list_forms_by_code(request, FormKind.CANCEL_CODE, CancelCodeFormSerializer)
+        """List Cancel Code Application Forms with filters and statistics"""
+        return self._list_forms_with_filters(request, FormKind.CANCEL_CODE, CancelCodeFormSerializer,
+                                             search_fields=['full_name', 'phone', 'email'],
+                                             filter_fields=['submitted', 'payoff'])
 
-    # TRANSLATE ENDPOINTS
+    @swagger_auto_schema(
+        method='get',
+        responses={200: 'Statistics'},
+        operation_description="Get Cancel Code forms statistics",
+        tags=['Cancel Code Forms'],
+    )
+    @action(detail=False, methods=['get'], url_path='cancelcode/stats')
+    def cancelcode_stats(self, request):
+        """Get Cancel Code forms statistics"""
+        return self._get_form_stats(request, FormKind.CANCEL_CODE)
+
+    # TRANSLATE ENDPOINTS - Updated with filters and statistics
     @swagger_auto_schema(
         method='post',
         request_body=TranslateFormSerializer,
@@ -610,20 +679,56 @@ class ApplicantViewSet(viewsets.ModelViewSet):
     @swagger_auto_schema(
         method='get',
         responses={200: TranslateFormSerializer(many=True)},
-        operation_description="List all Translation forms for the authenticated user with pagination",
+        operation_description="List all Translation forms with filters and search",
         tags=['Translation Forms'],
         manual_parameters=[
+            # Pagination
             openapi.Parameter('page', openapi.IN_QUERY, description="Page number", type=openapi.TYPE_INTEGER),
             openapi.Parameter('page_size', openapi.IN_QUERY, description="Number of results per page",
                               type=openapi.TYPE_INTEGER),
+
+            # Filters
+            openapi.Parameter('submitted', openapi.IN_QUERY, description="Filter by submitted status (true/false)",
+                              type=openapi.TYPE_BOOLEAN),
+            openapi.Parameter('payoff', openapi.IN_QUERY, description="Filter by payoff status (true/false)",
+                              type=openapi.TYPE_BOOLEAN),
+            openapi.Parameter('date_from', openapi.IN_QUERY, description="Filter from date (YYYY-MM-DD)",
+                              type=openapi.TYPE_STRING),
+            openapi.Parameter('date_to', openapi.IN_QUERY, description="Filter to date (YYYY-MM-DD)",
+                              type=openapi.TYPE_STRING),
+
+            # Search
+            openapi.Parameter('search', openapi.IN_QUERY, description="Search in full_name, phone, email",
+                              type=openapi.TYPE_STRING),
+
+            # Ordering
+            openapi.Parameter('ordering', openapi.IN_QUERY, description="Order by field (prefix with - for desc)",
+                              type=openapi.TYPE_STRING),
+
+            # Statistics
+            openapi.Parameter('include_stats', openapi.IN_QUERY, description="Include statistics in response",
+                              type=openapi.TYPE_BOOLEAN),
         ]
     )
     @action(detail=False, methods=['get'], url_path='translate')
     def list_translate(self, request):
-        """List Translation Application Forms"""
-        return self._list_forms_by_code(request, FormKind.TRANSLATE, TranslateFormSerializer)
+        """List Translation Application Forms with filters and statistics"""
+        return self._list_forms_with_filters(request, FormKind.TRANSLATE, TranslateFormSerializer,
+                                             search_fields=['full_name', 'phone', 'email'],
+                                             filter_fields=['submitted', 'payoff'])
 
-    # LANGUAGE COURSE ENDPOINTS
+    @swagger_auto_schema(
+        method='get',
+        responses={200: 'Statistics'},
+        operation_description="Get Translation forms statistics",
+        tags=['Translation Forms'],
+    )
+    @action(detail=False, methods=['get'], url_path='translate/stats')
+    def translate_stats(self, request):
+        """Get Translation forms statistics"""
+        return self._get_form_stats(request, FormKind.TRANSLATE)
+
+    # LANGUAGE COURSE ENDPOINTS - Updated with filters and statistics
     @swagger_auto_schema(
         method='post',
         request_body=LangCourseFormSerializer,
@@ -688,20 +793,56 @@ class ApplicantViewSet(viewsets.ModelViewSet):
     @swagger_auto_schema(
         method='get',
         responses={200: LangCourseFormSerializer(many=True)},
-        operation_description="List all Language Course forms for the authenticated user with pagination",
+        operation_description="List all Language Course forms with filters and search",
         tags=['Language Course Forms'],
         manual_parameters=[
+            # Pagination
             openapi.Parameter('page', openapi.IN_QUERY, description="Page number", type=openapi.TYPE_INTEGER),
             openapi.Parameter('page_size', openapi.IN_QUERY, description="Number of results per page",
                               type=openapi.TYPE_INTEGER),
+
+            # Filters
+            openapi.Parameter('submitted', openapi.IN_QUERY, description="Filter by submitted status (true/false)",
+                              type=openapi.TYPE_BOOLEAN),
+            openapi.Parameter('payoff', openapi.IN_QUERY, description="Filter by payoff status (true/false)",
+                              type=openapi.TYPE_BOOLEAN),
+            openapi.Parameter('date_from', openapi.IN_QUERY, description="Filter from date (YYYY-MM-DD)",
+                              type=openapi.TYPE_STRING),
+            openapi.Parameter('date_to', openapi.IN_QUERY, description="Filter to date (YYYY-MM-DD)",
+                              type=openapi.TYPE_STRING),
+
+            # Search
+            openapi.Parameter('search', openapi.IN_QUERY, description="Search in full_name, phone, email",
+                              type=openapi.TYPE_STRING),
+
+            # Ordering
+            openapi.Parameter('ordering', openapi.IN_QUERY, description="Order by field (prefix with - for desc)",
+                              type=openapi.TYPE_STRING),
+
+            # Statistics
+            openapi.Parameter('include_stats', openapi.IN_QUERY, description="Include statistics in response",
+                              type=openapi.TYPE_BOOLEAN),
         ]
     )
     @action(detail=False, methods=['get'], url_path='langcourse')
     def list_langcourse(self, request):
-        """List Language Course Application Forms"""
-        return self._list_forms_by_code(request, FormKind.LANGUAGE_COURSE, LangCourseFormSerializer)
+        """List Language Course Application Forms with filters and statistics"""
+        return self._list_forms_with_filters(request, FormKind.LANGUAGE_COURSE, LangCourseFormSerializer,
+                                             search_fields=['full_name', 'phone', 'email'],
+                                             filter_fields=['submitted', 'payoff'])
 
-    # UNIVERSITY FEES ENDPOINTS
+    @swagger_auto_schema(
+        method='get',
+        responses={200: 'Statistics'},
+        operation_description="Get Language Course forms statistics",
+        tags=['Language Course Forms'],
+    )
+    @action(detail=False, methods=['get'], url_path='langcourse/stats')
+    def langcourse_stats(self, request):
+        """Get Language Course forms statistics"""
+        return self._get_form_stats(request, FormKind.LANGUAGE_COURSE)
+
+    # UNIVERSITY FEES ENDPOINTS - Updated with filters and statistics
     @swagger_auto_schema(
         method='post',
         request_body=UniversityFeesFormSerializer,
@@ -766,18 +907,59 @@ class ApplicantViewSet(viewsets.ModelViewSet):
     @swagger_auto_schema(
         method='get',
         responses={200: UniversityFeesFormSerializer(many=True)},
-        operation_description="List all University Fees forms for the authenticated user with pagination",
+        operation_description="List all University Fees forms with filters and search",
         tags=['University Fees Forms'],
         manual_parameters=[
+            # Pagination
             openapi.Parameter('page', openapi.IN_QUERY, description="Page number", type=openapi.TYPE_INTEGER),
             openapi.Parameter('page_size', openapi.IN_QUERY, description="Number of results per page",
                               type=openapi.TYPE_INTEGER),
+
+            # Filters
+            openapi.Parameter('submitted', openapi.IN_QUERY, description="Filter by submitted status (true/false)",
+                              type=openapi.TYPE_BOOLEAN),
+            openapi.Parameter('payoff', openapi.IN_QUERY, description="Filter by payoff status (true/false)",
+                              type=openapi.TYPE_BOOLEAN),
+            openapi.Parameter('university', openapi.IN_QUERY, description="Filter by university",
+                              type=openapi.TYPE_STRING),
+            openapi.Parameter('department', openapi.IN_QUERY, description="Filter by department",
+                              type=openapi.TYPE_STRING),
+            openapi.Parameter('date_from', openapi.IN_QUERY, description="Filter from date (YYYY-MM-DD)",
+                              type=openapi.TYPE_STRING),
+            openapi.Parameter('date_to', openapi.IN_QUERY, description="Filter to date (YYYY-MM-DD)",
+                              type=openapi.TYPE_STRING),
+
+            # Search
+            openapi.Parameter('search', openapi.IN_QUERY,
+                              description="Search in full_name, phone, email, university, department",
+                              type=openapi.TYPE_STRING),
+
+            # Ordering
+            openapi.Parameter('ordering', openapi.IN_QUERY, description="Order by field (prefix with - for desc)",
+                              type=openapi.TYPE_STRING),
+
+            # Statistics
+            openapi.Parameter('include_stats', openapi.IN_QUERY, description="Include statistics in response",
+                              type=openapi.TYPE_BOOLEAN),
         ]
     )
     @action(detail=False, methods=['get'], url_path='universityfees')
     def list_universityfees(self, request):
-        """List University Fees Application Forms"""
-        return self._list_forms_by_code(request, FormKind.UNIVERSITY_FEES, UniversityFeesFormSerializer)
+        """List University Fees Application Forms with filters and statistics"""
+        return self._list_forms_with_filters(request, FormKind.UNIVERSITY_FEES, UniversityFeesFormSerializer,
+                                             search_fields=['full_name', 'phone', 'email', 'university', 'department'],
+                                             filter_fields=['submitted', 'payoff'])
+
+    @swagger_auto_schema(
+        method='get',
+        responses={200: 'Statistics'},
+        operation_description="Get University Fees forms statistics",
+        tags=['University Fees Forms'],
+    )
+    @action(detail=False, methods=['get'], url_path='universityfees/stats')
+    def universityfees_stats(self, request):
+        """Get University Fees forms statistics"""
+        return self._get_form_stats(request, FormKind.UNIVERSITY_FEES)
 
     # PUBLISH RESEARCH ENDPOINTS
     @swagger_auto_schema(
@@ -847,16 +1029,931 @@ class ApplicantViewSet(viewsets.ModelViewSet):
         operation_description="List all Publish Research forms for the authenticated user with pagination",
         tags=['Publish Research Forms'],
         manual_parameters=[
+            # Pagination
             openapi.Parameter('page', openapi.IN_QUERY, description="Page number", type=openapi.TYPE_INTEGER),
             openapi.Parameter('page_size', openapi.IN_QUERY, description="Number of results per page",
                               type=openapi.TYPE_INTEGER),
+
+            # Filters
+            openapi.Parameter('submitted', openapi.IN_QUERY, description="Filter by submitted status (true/false)",
+                              type=openapi.TYPE_BOOLEAN),
+            openapi.Parameter('payoff', openapi.IN_QUERY, description="Filter by payoff status (true/false)",
+                              type=openapi.TYPE_BOOLEAN),
+            openapi.Parameter('govern', openapi.IN_QUERY, description="Filter by govern", type=openapi.TYPE_STRING),
+            openapi.Parameter('date_from', openapi.IN_QUERY, description="Filter from date (YYYY-MM-DD)",
+                              type=openapi.TYPE_STRING),
+            openapi.Parameter('date_to', openapi.IN_QUERY, description="Filter to date (YYYY-MM-DD)",
+                              type=openapi.TYPE_STRING),
+
+            # Search
+            openapi.Parameter('search', openapi.IN_QUERY, description="Search in full_name, phone, passport",
+                              type=openapi.TYPE_STRING),
+
+            # Ordering
+            openapi.Parameter('ordering', openapi.IN_QUERY, description="Order by field (prefix with - for desc)",
+                              type=openapi.TYPE_STRING),
+
+            # Statistics
+            openapi.Parameter('include_stats', openapi.IN_QUERY, description="Include statistics in response",
+                              type=openapi.TYPE_BOOLEAN),
         ]
     )
     @action(detail=False, methods=['get'], url_path='publish')
     def list_publish(self, request):
         """List Publish Research Application Forms"""
-        return self._list_forms_by_code(request, FormKind.PUBLISH_RESEARCH, PublishFormSerializer)
+        return self._list_forms_with_filters(request, FormKind.PUBLISH_RESEARCH, PublishFormSerializer,
+                                             search_fields=['full_name', 'email', 'phone'],
+                                             filter_fields=['submitted', 'payoff'])
 
+
+    # FLIGHT ENDPOINTS
+    @swagger_auto_schema(
+        method='post',
+        request_body=Flight,
+        responses={201: Flight, 400: 'Bad Request'},
+        operation_description="Create a new Flight form",
+        tags=['Flight Forms'],
+        manual_parameters=[
+            openapi.Parameter('images', openapi.IN_FORM, description="Multiple image files", type=openapi.TYPE_FILE,
+                              required=False),
+            openapi.Parameter('image_types', openapi.IN_FORM, description="Comma-separated image types",
+                              type=openapi.TYPE_STRING, required=False),
+        ],
+    )
+    @action(detail=False, methods=['post'], url_path='flight')
+    def create_flight(self, request):
+        """Create Flight Application Form with optional images"""
+        try:
+            form_kind = FormKind.objects.get(name=FormKind.FLIGHT, is_active=True)
+        except FormKind.DoesNotExist:
+            return Response(
+                {'error': f'Form kind "{FormKind.FLIGHT}" not found or inactive'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Prepare form data
+        data = request.data.copy()
+        data['kind'] = form_kind.id
+
+        # Remove image-related fields from form data
+        form_data = {k: v for k, v in data.items() if k not in ['images', 'image_types']}
+
+        with transaction.atomic():
+            # Create the form
+            serializer = Flight(data=form_data)
+            if serializer.is_valid():
+                application = serializer.save(user=request.user)
+
+                # Handle image uploads if present
+                created_images, image_errors = self.handle_image_uploads(application, request)
+
+                # Prepare response
+                response_data = {
+                    'form': serializer.data,
+                    'message': 'Flight form created successfully'
+                }
+
+                if created_images:
+                    image_serializer = ApplicationImageSerializer(
+                        created_images, many=True, context={'request': request}
+                    )
+                    response_data['images'] = image_serializer.data
+                    response_data['images_count'] = len(created_images)
+                    response_data['message'] += f' with {len(created_images)} images'
+
+                if image_errors:
+                    response_data['image_warnings'] = image_errors
+
+                return Response(response_data, status=status.HTTP_201_CREATED)
+            else:
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @swagger_auto_schema(
+        method='get',
+        responses={200: Flight(many=True)},
+        operation_description="List all Flight forms with filters and search",
+        tags=['Flight Forms'],
+        manual_parameters=[
+            # Pagination
+            openapi.Parameter('page', openapi.IN_QUERY, description="Page number", type=openapi.TYPE_INTEGER),
+            openapi.Parameter('page_size', openapi.IN_QUERY, description="Number of results per page",
+                              type=openapi.TYPE_INTEGER),
+
+            # Filters
+            openapi.Parameter('submitted', openapi.IN_QUERY, description="Filter by submitted status (true/false)",
+                              type=openapi.TYPE_BOOLEAN),
+            openapi.Parameter('payoff', openapi.IN_QUERY, description="Filter by payoff status (true/false)",
+                              type=openapi.TYPE_BOOLEAN),
+            openapi.Parameter('govern', openapi.IN_QUERY, description="Filter by govern", type=openapi.TYPE_STRING),
+            openapi.Parameter('date_from', openapi.IN_QUERY, description="Filter from date (YYYY-MM-DD)",
+                              type=openapi.TYPE_STRING),
+            openapi.Parameter('date_to', openapi.IN_QUERY, description="Filter to date (YYYY-MM-DD)",
+                              type=openapi.TYPE_STRING),
+
+            # Search
+            openapi.Parameter('search', openapi.IN_QUERY, description="Search in full_name, phone, passport",
+                              type=openapi.TYPE_STRING),
+
+            # Ordering
+            openapi.Parameter('ordering', openapi.IN_QUERY, description="Order by field (prefix with - for desc)",
+                              type=openapi.TYPE_STRING),
+
+            # Statistics
+            openapi.Parameter('include_stats', openapi.IN_QUERY, description="Include statistics in response",
+                              type=openapi.TYPE_BOOLEAN),
+        ]
+    )
+    @action(detail=False, methods=['get'], url_path='flight')
+    def list_flight(self, request):
+        """List Flight Application Forms with filters and statistics"""
+        return self._list_forms_with_filters(request, FormKind.FLIGHT, Flight,
+                                             search_fields=['full_name', 'phone', 'passport'],
+                                             filter_fields=['submitted', 'payoff', 'govern'])
+
+    @swagger_auto_schema(
+        method='get',
+        responses={200: 'Statistics'},
+        operation_description="Get Flight forms statistics",
+        tags=['Flight Forms'],
+    )
+    @action(detail=False, methods=['get'], url_path='flight/stats')
+    def flight_stats(self, request):
+        """Get Flight forms statistics"""
+        return self._get_form_stats(request, FormKind.FLIGHT)
+
+    # HIGHER EDUCATION ENDPOINTS
+    @swagger_auto_schema(
+        method='post',
+        request_body=HigherEducationFile,
+        responses={201: HigherEducationFile, 400: 'Bad Request'},
+        operation_description="Create a new Higher Education form",
+        tags=['Higher Education Forms'],
+        manual_parameters=[
+            openapi.Parameter('images', openapi.IN_FORM, description="Multiple image files", type=openapi.TYPE_FILE,
+                              required=False),
+            openapi.Parameter('image_types', openapi.IN_FORM, description="Comma-separated image types",
+                              type=openapi.TYPE_STRING, required=False),
+        ],
+    )
+    @action(detail=False, methods=['post'], url_path='higher-education')
+    def create_higher_education(self, request):
+        """Create Higher Education Application Form with optional images"""
+        try:
+            form_kind = FormKind.objects.get(name=FormKind.HIGHER_EDUCATION, is_active=True)
+        except FormKind.DoesNotExist:
+            return Response(
+                {'error': f'Form kind "{FormKind.HIGHER_EDUCATION}" not found or inactive'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Prepare form data
+        data = request.data.copy()
+        data['kind'] = form_kind.id
+
+        # Remove image-related fields from form data
+        form_data = {k: v for k, v in data.items() if k not in ['images', 'image_types']}
+
+        with transaction.atomic():
+            # Create the form
+            serializer = HigherEducationFile(data=form_data)
+            if serializer.is_valid():
+                application = serializer.save(user=request.user)
+
+                # Handle image uploads if present
+                created_images, image_errors = self.handle_image_uploads(application, request)
+
+                # Prepare response
+                response_data = {
+                    'form': serializer.data,
+                    'message': 'Higher Education form created successfully'
+                }
+
+                if created_images:
+                    image_serializer = ApplicationImageSerializer(
+                        created_images, many=True, context={'request': request}
+                    )
+                    response_data['images'] = image_serializer.data
+                    response_data['images_count'] = len(created_images)
+                    response_data['message'] += f' with {len(created_images)} images'
+
+                if image_errors:
+                    response_data['image_warnings'] = image_errors
+
+                return Response(response_data, status=status.HTTP_201_CREATED)
+            else:
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @swagger_auto_schema(
+        method='get',
+        responses={200: HigherEducationFile(many=True)},
+        operation_description="List all Higher Education forms with filters and search",
+        tags=['Higher Education Forms'],
+        manual_parameters=[
+            # Pagination
+            openapi.Parameter('page', openapi.IN_QUERY, description="Page number", type=openapi.TYPE_INTEGER),
+            openapi.Parameter('page_size', openapi.IN_QUERY, description="Number of results per page",
+                              type=openapi.TYPE_INTEGER),
+
+            # Filters
+            openapi.Parameter('payoff', openapi.IN_QUERY, description="Filter by payoff status (true/false)",
+                              type=openapi.TYPE_BOOLEAN),
+            openapi.Parameter('date_from', openapi.IN_QUERY, description="Filter from date (YYYY-MM-DD)",
+                              type=openapi.TYPE_STRING),
+            openapi.Parameter('date_to', openapi.IN_QUERY, description="Filter to date (YYYY-MM-DD)",
+                              type=openapi.TYPE_STRING),
+
+            # Search
+            openapi.Parameter('search', openapi.IN_QUERY, description="Search in full_name, email, phone",
+                              type=openapi.TYPE_STRING),
+
+            # Ordering
+            openapi.Parameter('ordering', openapi.IN_QUERY, description="Order by field (prefix with - for desc)",
+                              type=openapi.TYPE_STRING),
+
+            # Statistics
+            openapi.Parameter('include_stats', openapi.IN_QUERY, description="Include statistics in response",
+                              type=openapi.TYPE_BOOLEAN),
+        ]
+    )
+    @action(detail=False, methods=['get'], url_path='higher-education')
+    def list_higher_education(self, request):
+        """List Higher Education Application Forms with filters and statistics"""
+        return self._list_forms_with_filters(request, FormKind.HIGHER_EDUCATION, HigherEducationFile,
+                                             search_fields=['full_name', 'email', 'phone'],
+                                             filter_fields=['payoff'])
+
+    @swagger_auto_schema(
+        method='get',
+        responses={200: 'Statistics'},
+        operation_description="Get Higher Education forms statistics",
+        tags=['Higher Education Forms'],
+    )
+    @action(detail=False, methods=['get'], url_path='higher-education/stats')
+    def higher_education_stats(self, request):
+        """Get Higher Education forms statistics"""
+        return self._get_form_stats(request, FormKind.HIGHER_EDUCATION)
+
+    # RAHGERY ENDPOINTS
+    @swagger_auto_schema(
+        method='post',
+        request_body=Rahgery,
+        responses={201: Rahgery, 400: 'Bad Request'},
+        operation_description="Create a new Rahgery form",
+        tags=['Rahgery Forms'],
+        manual_parameters=[
+            openapi.Parameter('images', openapi.IN_FORM, description="Multiple image files", type=openapi.TYPE_FILE,
+                              required=False),
+            openapi.Parameter('image_types', openapi.IN_FORM, description="Comma-separated image types",
+                              type=openapi.TYPE_STRING, required=False),
+        ],
+    )
+    @action(detail=False, methods=['post'], url_path='rahgery')
+    def create_rahgery(self, request):
+        """Create Rahgery Application Form with optional images"""
+        try:
+            form_kind = FormKind.objects.get(name=FormKind.RAHGERY, is_active=True)
+        except FormKind.DoesNotExist:
+            return Response(
+                {'error': f'Form kind "{FormKind.RAHGERY}" not found or inactive'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Prepare form data
+        data = request.data.copy()
+        data['kind'] = form_kind.id
+
+        # Remove image-related fields from form data
+        form_data = {k: v for k, v in data.items() if k not in ['images', 'image_types']}
+
+        with transaction.atomic():
+            # Create the form
+            serializer = Rahgery(data=form_data)
+            if serializer.is_valid():
+                application = serializer.save(user=request.user)
+
+                # Handle image uploads if present
+                created_images, image_errors = self.handle_image_uploads(application, request)
+
+                # Prepare response
+                response_data = {
+                    'form': serializer.data,
+                    'message': 'Rahgery form created successfully'
+                }
+
+                if created_images:
+                    image_serializer = ApplicationImageSerializer(
+                        created_images, many=True, context={'request': request}
+                    )
+                    response_data['images'] = image_serializer.data
+                    response_data['images_count'] = len(created_images)
+                    response_data['message'] += f' with {len(created_images)} images'
+
+                if image_errors:
+                    response_data['image_warnings'] = image_errors
+
+                return Response(response_data, status=status.HTTP_201_CREATED)
+            else:
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @swagger_auto_schema(
+        method='get',
+        responses={200: Rahgery(many=True)},
+        operation_description="List all Rahgery forms with filters and search",
+        tags=['Rahgery Forms'],
+        manual_parameters=[
+            # Pagination
+            openapi.Parameter('page', openapi.IN_QUERY, description="Page number", type=openapi.TYPE_INTEGER),
+            openapi.Parameter('page_size', openapi.IN_QUERY, description="Number of results per page",
+                              type=openapi.TYPE_INTEGER),
+
+            # Filters
+            openapi.Parameter('submitted', openapi.IN_QUERY, description="Filter by submitted status (true/false)",
+                              type=openapi.TYPE_BOOLEAN),
+            openapi.Parameter('payoff', openapi.IN_QUERY, description="Filter by payoff status (true/false)",
+                              type=openapi.TYPE_BOOLEAN),
+            openapi.Parameter('university', openapi.IN_QUERY, description="Filter by university",
+                              type=openapi.TYPE_STRING),
+            openapi.Parameter('department', openapi.IN_QUERY, description="Filter by department",
+                              type=openapi.TYPE_STRING),
+            openapi.Parameter('date_from', openapi.IN_QUERY, description="Filter from date (YYYY-MM-DD)",
+                              type=openapi.TYPE_STRING),
+            openapi.Parameter('date_to', openapi.IN_QUERY, description="Filter to date (YYYY-MM-DD)",
+                              type=openapi.TYPE_STRING),
+
+            # Search
+            openapi.Parameter('search', openapi.IN_QUERY,
+                              description="Search in full_name, email, phone, passport, university, department",
+                              type=openapi.TYPE_STRING),
+
+            # Ordering
+            openapi.Parameter('ordering', openapi.IN_QUERY, description="Order by field (prefix with - for desc)",
+                              type=openapi.TYPE_STRING),
+
+            # Statistics
+            openapi.Parameter('include_stats', openapi.IN_QUERY, description="Include statistics in response",
+                              type=openapi.TYPE_BOOLEAN),
+        ]
+    )
+    @action(detail=False, methods=['get'], url_path='rahgery')
+    def list_rahgery(self, request):
+        """List Rahgery Application Forms with filters and statistics"""
+        return self._list_forms_with_filters(request, FormKind.RAHGERY, Rahgery,
+                                             search_fields=['full_name', 'email', 'phone', 'passport', 'university',
+                                                            'department'],
+                                             filter_fields=['submitted', 'payoff', 'university', 'department'])
+
+    @swagger_auto_schema(
+        method='get',
+        responses={200: 'Statistics'},
+        operation_description="Get Rahgery forms statistics",
+        tags=['Rahgery Forms'],
+    )
+    @action(detail=False, methods=['get'], url_path='rahgery/stats')
+    def rahgery_stats(self, request):
+        """Get Rahgery forms statistics"""
+        return self._get_form_stats(request, FormKind.RAHGERY)
+
+    # ISTALAL ENDPOINTS
+    @swagger_auto_schema(
+        method='post',
+        request_body=Istalal,
+        responses={201: Istalal, 400: 'Bad Request'},
+        operation_description="Create a new Istalal (Research Receipt) form",
+        tags=['Istalal Forms'],
+        manual_parameters=[
+            openapi.Parameter('images', openapi.IN_FORM, description="Multiple image files", type=openapi.TYPE_FILE,
+                              required=False),
+            openapi.Parameter('image_types', openapi.IN_FORM, description="Comma-separated image types",
+                              type=openapi.TYPE_STRING, required=False),
+        ],
+    )
+    @action(detail=False, methods=['post'], url_path='istalal')
+    def create_istalal(self, request):
+        """Create Istalal (Research Receipt) Application Form with optional images"""
+        try:
+            form_kind = FormKind.objects.get(name=FormKind.ISTALAL, is_active=True)
+        except FormKind.DoesNotExist:
+            return Response(
+                {'error': f'Form kind "{FormKind.ISTALAL}" not found or inactive'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Prepare form data
+        data = request.data.copy()
+        data['kind'] = form_kind.id
+
+        # Remove image-related fields from form data
+        form_data = {k: v for k, v in data.items() if k not in ['images', 'image_types']}
+
+        with transaction.atomic():
+            # Create the form
+            serializer = Istalal(data=form_data)
+            if serializer.is_valid():
+                application = serializer.save(user=request.user)
+
+                # Handle image uploads if present
+                created_images, image_errors = self.handle_image_uploads(application, request)
+
+                # Prepare response
+                response_data = {
+                    'form': serializer.data,
+                    'message': 'Istalal form created successfully'
+                }
+
+                if created_images:
+                    image_serializer = ApplicationImageSerializer(
+                        created_images, many=True, context={'request': request}
+                    )
+                    response_data['images'] = image_serializer.data
+                    response_data['images_count'] = len(created_images)
+                    response_data['message'] += f' with {len(created_images)} images'
+
+                if image_errors:
+                    response_data['image_warnings'] = image_errors
+
+                return Response(response_data, status=status.HTTP_201_CREATED)
+            else:
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @swagger_auto_schema(
+        method='get',
+        responses={200: Istalal(many=True)},
+        operation_description="List all Istalal forms with filters and search",
+        tags=['Istalal Forms'],
+        manual_parameters=[
+            # Pagination
+            openapi.Parameter('page', openapi.IN_QUERY, description="Page number", type=openapi.TYPE_INTEGER),
+            openapi.Parameter('page_size', openapi.IN_QUERY, description="Number of results per page",
+                              type=openapi.TYPE_INTEGER),
+
+            # Filters
+            openapi.Parameter('submitted', openapi.IN_QUERY, description="Filter by submitted status (true/false)",
+                              type=openapi.TYPE_BOOLEAN),
+            openapi.Parameter('payoff', openapi.IN_QUERY, description="Filter by payoff status (true/false)",
+                              type=openapi.TYPE_BOOLEAN),
+            openapi.Parameter('date_from', openapi.IN_QUERY, description="Filter from date (YYYY-MM-DD)",
+                              type=openapi.TYPE_STRING),
+            openapi.Parameter('date_to', openapi.IN_QUERY, description="Filter to date (YYYY-MM-DD)",
+                              type=openapi.TYPE_STRING),
+
+            # Search
+            openapi.Parameter('search', openapi.IN_QUERY, description="Search in full_name, email, phone",
+                              type=openapi.TYPE_STRING),
+
+            # Ordering
+            openapi.Parameter('ordering', openapi.IN_QUERY, description="Order by field (prefix with - for desc)",
+                              type=openapi.TYPE_STRING),
+
+            # Statistics
+            openapi.Parameter('include_stats', openapi.IN_QUERY, description="Include statistics in response",
+                              type=openapi.TYPE_BOOLEAN),
+        ]
+    )
+    @action(detail=False, methods=['get'], url_path='istalal')
+    def list_istalal(self, request):
+        """List Istalal Application Forms with filters and statistics"""
+        return self._list_forms_with_filters(request, FormKind.ISTALAL, Istalal,
+                                             search_fields=['full_name', 'email', 'phone'],
+                                             filter_fields=['submitted', 'payoff'])
+
+    @swagger_auto_schema(
+        method='get',
+        responses={200: 'Statistics'},
+        operation_description="Get Istalal forms statistics",
+        tags=['Istalal Forms'],
+    )
+    @action(detail=False, methods=['get'], url_path='istalal/stats')
+    def istalal_stats(self, request):
+        """Get Istalal forms statistics"""
+        return self._get_form_stats(request, FormKind.ISTALAL)
+
+    # DELVARY ENDPOINTS
+    @swagger_auto_schema(
+        method='post',
+        request_body=Delvary,
+        responses={201: Delvary, 400: 'Bad Request'},
+        operation_description="Create a new Delvary (Document Delivery within Iraq) form",
+        tags=['Delvary Forms'],
+        manual_parameters=[
+            openapi.Parameter('images', openapi.IN_FORM, description="Multiple image files", type=openapi.TYPE_FILE,
+                              required=False),
+            openapi.Parameter('image_types', openapi.IN_FORM, description="Comma-separated image types",
+                              type=openapi.TYPE_STRING, required=False),
+        ],
+    )
+    @action(detail=False, methods=['post'], url_path='delvary')
+    def create_delvary(self, request):
+        """Create Delvary (Document Delivery within Iraq) Application Form with optional images"""
+        try:
+            form_kind = FormKind.objects.get(name=FormKind.DELVARY, is_active=True)
+        except FormKind.DoesNotExist:
+            return Response(
+                {'error': f'Form kind "{FormKind.DELVARY}" not found or inactive'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Prepare form data
+        data = request.data.copy()
+        data['kind'] = form_kind.id
+
+        # Remove image-related fields from form data
+        form_data = {k: v for k, v in data.items() if k not in ['images', 'image_types']}
+
+        with transaction.atomic():
+            # Create the form
+            serializer = Delvary(data=form_data)
+            if serializer.is_valid():
+                application = serializer.save(user=request.user)
+
+                # Handle image uploads if present
+                created_images, image_errors = self.handle_image_uploads(application, request)
+
+                # Prepare response
+                response_data = {
+                    'form': serializer.data,
+                    'message': 'Delvary form created successfully'
+                }
+
+                if created_images:
+                    image_serializer = ApplicationImageSerializer(
+                        created_images, many=True, context={'request': request}
+                    )
+                    response_data['images'] = image_serializer.data
+                    response_data['images_count'] = len(created_images)
+                    response_data['message'] += f' with {len(created_images)} images'
+
+                if image_errors:
+                    response_data['image_warnings'] = image_errors
+
+                return Response(response_data, status=status.HTTP_201_CREATED)
+            else:
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @swagger_auto_schema(
+        method='get',
+        responses={200: Delvary(many=True)},
+        operation_description="List all Delvary forms with filters and search",
+        tags=['Delvary Forms'],
+        manual_parameters=[
+            # Pagination
+            openapi.Parameter('page', openapi.IN_QUERY, description="Page number", type=openapi.TYPE_INTEGER),
+            openapi.Parameter('page_size', openapi.IN_QUERY, description="Number of results per page",
+                              type=openapi.TYPE_INTEGER),
+
+            # Filters
+            openapi.Parameter('submitted', openapi.IN_QUERY, description="Filter by submitted status (true/false)",
+                              type=openapi.TYPE_BOOLEAN),
+            openapi.Parameter('payoff', openapi.IN_QUERY, description="Filter by payoff status (true/false)",
+                              type=openapi.TYPE_BOOLEAN),
+            openapi.Parameter('govern', openapi.IN_QUERY, description="Filter by govern", type=openapi.TYPE_STRING),
+            openapi.Parameter('nearestPoint', openapi.IN_QUERY, description="Filter by nearest point",
+                              type=openapi.TYPE_STRING),
+            openapi.Parameter('date_from', openapi.IN_QUERY, description="Filter from date (YYYY-MM-DD)",
+                              type=openapi.TYPE_STRING),
+            openapi.Parameter('date_to', openapi.IN_QUERY, description="Filter to date (YYYY-MM-DD)",
+                              type=openapi.TYPE_STRING),
+
+            # Search
+            openapi.Parameter('search', openapi.IN_QUERY, description="Search in full_name, phone, address",
+                              type=openapi.TYPE_STRING),
+
+            # Ordering
+            openapi.Parameter('ordering', openapi.IN_QUERY, description="Order by field (prefix with - for desc)",
+                              type=openapi.TYPE_STRING),
+
+            # Statistics
+            openapi.Parameter('include_stats', openapi.IN_QUERY, description="Include statistics in response",
+                              type=openapi.TYPE_BOOLEAN),
+        ]
+    )
+    @action(detail=False, methods=['get'], url_path='delvary')
+    def list_delvary(self, request):
+        """List Delvary Application Forms with filters and statistics"""
+        return self._list_forms_with_filters(request, FormKind.DELVARY, Delvary,
+                                             search_fields=['full_name', 'phone', 'address'],
+                                             filter_fields=['submitted', 'payoff', 'govern', 'nearestPoint'])
+
+    @swagger_auto_schema(
+        method='get',
+        responses={200: 'Statistics'},
+        operation_description="Get Delvary forms statistics",
+        tags=['Delvary Forms'],
+    )
+    @action(detail=False, methods=['get'], url_path='delvary/stats')
+    def delvary_stats(self, request):
+        """Get Delvary forms statistics"""
+        return self._get_form_stats(request, FormKind.DELVARY)
+
+    # TRANSLATE IRAQ ENDPOINTS
+    @swagger_auto_schema(
+        method='post',
+        request_body=TranslateIraq,
+        responses={201: TranslateIraq, 400: 'Bad Request'},
+        operation_description="Create a new TranslateIraq (Translation for Language Course and Documents within Iraq) form",
+        tags=['TranslateIraq Forms'],
+        manual_parameters=[
+            openapi.Parameter('images', openapi.IN_FORM, description="Multiple image files", type=openapi.TYPE_FILE,
+                              required=False),
+            openapi.Parameter('image_types', openapi.IN_FORM, description="Comma-separated image types",
+                              type=openapi.TYPE_STRING, required=False),
+        ],
+    )
+    @action(detail=False, methods=['post'], url_path='translate-iraq')
+    def create_translate_iraq(self, request):
+        """Create TranslateIraq (Translation for Language Course and Documents within Iraq) Application Form with optional images"""
+        try:
+            form_kind = FormKind.objects.get(name=FormKind.TRANSLATE_IRAQ, is_active=True)
+        except FormKind.DoesNotExist:
+            return Response(
+                {'error': f'Form kind "{FormKind.TRANSLATE_IRAQ}" not found or inactive'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Prepare form data
+        data = request.data.copy()
+        data['kind'] = form_kind.id
+
+        # Remove image-related fields from form data
+        form_data = {k: v for k, v in data.items() if k not in ['images', 'image_types']}
+
+        with transaction.atomic():
+            # Create the form
+            serializer = TranslateIraq(data=form_data)
+            if serializer.is_valid():
+                application = serializer.save(user=request.user)
+
+                # Handle image uploads if present
+                created_images, image_errors = self.handle_image_uploads(application, request)
+
+                # Prepare response
+                response_data = {
+                    'form': serializer.data,
+                    'message': 'TranslateIraq form created successfully'
+                }
+
+                if created_images:
+                    image_serializer = ApplicationImageSerializer(
+                        created_images, many=True, context={'request': request}
+                    )
+                    response_data['images'] = image_serializer.data
+                    response_data['images_count'] = len(created_images)
+                    response_data['message'] += f' with {len(created_images)} images'
+
+                if image_errors:
+                    response_data['image_warnings'] = image_errors
+
+                return Response(response_data, status=status.HTTP_201_CREATED)
+            else:
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @swagger_auto_schema(
+        method='get',
+        responses={200: TranslateIraq(many=True)},
+        operation_description="List all TranslateIraq forms with filters and search",
+        tags=['TranslateIraq Forms'],
+        manual_parameters=[
+            # Pagination
+            openapi.Parameter('page', openapi.IN_QUERY, description="Page number", type=openapi.TYPE_INTEGER),
+            openapi.Parameter('page_size', openapi.IN_QUERY, description="Number of results per page",
+                              type=openapi.TYPE_INTEGER),
+
+            # Filters
+            openapi.Parameter('submitted', openapi.IN_QUERY, description="Filter by submitted status (true/false)",
+                              type=openapi.TYPE_BOOLEAN),
+            openapi.Parameter('payoff', openapi.IN_QUERY, description="Filter by payoff status (true/false)",
+                              type=openapi.TYPE_BOOLEAN),
+            openapi.Parameter('govern', openapi.IN_QUERY, description="Filter by govern", type=openapi.TYPE_STRING),
+            openapi.Parameter('nearestPoint', openapi.IN_QUERY, description="Filter by nearest point",
+                              type=openapi.TYPE_STRING),
+            openapi.Parameter('date_from', openapi.IN_QUERY, description="Filter from date (YYYY-MM-DD)",
+                              type=openapi.TYPE_STRING),
+            openapi.Parameter('date_to', openapi.IN_QUERY, description="Filter to date (YYYY-MM-DD)",
+                              type=openapi.TYPE_STRING),
+
+            # Search
+            openapi.Parameter('search', openapi.IN_QUERY, description="Search in full_name, phone, address",
+                              type=openapi.TYPE_STRING),
+
+            # Ordering
+            openapi.Parameter('ordering', openapi.IN_QUERY, description="Order by field (prefix with - for desc)",
+                              type=openapi.TYPE_STRING),
+
+            # Statistics
+            openapi.Parameter('include_stats', openapi.IN_QUERY, description="Include statistics in response",
+                              type=openapi.TYPE_BOOLEAN),
+        ]
+    )
+    @action(detail=False, methods=['get'], url_path='translate-iraq')
+    def list_translate_iraq(self, request):
+        """List TranslateIraq Application Forms with filters and statistics"""
+        return self._list_forms_with_filters(request, FormKind.TRANSLATE_IRAQ, TranslateIraq,
+                                             search_fields=['full_name', 'phone', 'address'],
+                                             filter_fields=['submitted', 'payoff', 'govern', 'nearestPoint'])
+
+    @swagger_auto_schema(
+        method='get',
+        responses={200: 'Statistics'},
+        operation_description="Get TranslateIraq forms statistics",
+        tags=['TranslateIraq Forms'],
+    )
+    @action(detail=False, methods=['get'], url_path='translate-iraq/stats')
+    def translate_iraq_stats(self, request):
+        """Get TranslateIraq forms statistics"""
+        return self._get_form_stats(request, FormKind.TRANSLATE_IRAQ)
+
+    # HELPER METHODS FOR FILTERING AND STATISTICS
+    def _list_forms_with_filters(self, request, form_kind_name, serializer_class, search_fields=None,
+                                 filter_fields=None):
+        """Generic method to list forms with filters, search, and statistics"""
+        try:
+            form_kind = FormKind.objects.get(name=form_kind_name, is_active=True)
+        except FormKind.DoesNotExist:
+            return Response(
+                {'error': f'Form kind "{form_kind_name}" not found or inactive'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Base queryset
+        queryset = ApplicationForm.objects.filter(
+            kind=form_kind,
+            user=request.user
+        ).prefetch_related('images').select_related('kind', 'user')
+
+        # Apply filters
+        if filter_fields:
+            for field in filter_fields:
+                value = request.query_params.get(field)
+                if value is not None:
+                    if field in ['submitted', 'payoff']:
+                        # Boolean filters
+                        queryset = queryset.filter(**{field: value.lower() == 'true'})
+                    else:
+                        # String filters
+                        queryset = queryset.filter(**{f'{field}__icontains': value})
+
+        # Date range filters
+        date_from = request.query_params.get('date_from')
+        date_to = request.query_params.get('date_to')
+
+        if date_from:
+            try:
+                from datetime import datetime
+                date_from_obj = datetime.strptime(date_from, '%Y-%m-%d').date()
+                queryset = queryset.filter(created_at__date__gte=date_from_obj)
+            except ValueError:
+                pass
+
+        if date_to:
+            try:
+                from datetime import datetime
+                date_to_obj = datetime.strptime(date_to, '%Y-%m-%d').date()
+                queryset = queryset.filter(created_at__date__lte=date_to_obj)
+            except ValueError:
+                pass
+
+        # Search functionality
+        search_query = request.query_params.get('search')
+        if search_query and search_fields:
+            from django.db.models import Q
+            search_filter = Q()
+            for field in search_fields:
+                search_filter |= Q(**{f'{field}__icontains': search_query})
+            queryset = queryset.filter(search_filter)
+
+        # Ordering
+        ordering = request.query_params.get('ordering', '-created_at')
+        if ordering:
+            queryset = queryset.order_by(ordering)
+
+        # Statistics (if requested)
+        include_stats = request.query_params.get('include_stats', '').lower() == 'true'
+        stats = None
+        if include_stats:
+            stats = self._calculate_form_stats(queryset)
+
+        # Pagination
+        from rest_framework.pagination import PageNumberPagination
+        paginator = PageNumberPagination()
+        paginator.page_size = int(request.query_params.get('page_size', 20))
+        paginated_queryset = paginator.paginate_queryset(queryset, request)
+
+        # Serialize data
+        serializer = serializer_class(paginated_queryset, many=True, context={'request': request})
+
+        # Prepare response
+        response_data = {
+            'results': serializer.data,
+            'count': queryset.count(),
+            'page_info': {
+                'current_page': paginator.page.number if paginator.page else 1,
+                'total_pages': paginator.page.paginator.num_pages if paginator.page else 1,
+                'page_size': paginator.page_size,
+                'has_next': paginator.page.has_next() if paginator.page else False,
+                'has_previous': paginator.page.has_previous() if paginator.page else False,
+            }
+        }
+
+        if stats:
+            response_data['statistics'] = stats
+
+        return Response(response_data, status=status.HTTP_200_OK)
+
+    def _get_form_stats(self, request, form_kind_name):
+        """Get comprehensive statistics for a specific form type"""
+        try:
+            form_kind = FormKind.objects.get(name=form_kind_name, is_active=True)
+        except FormKind.DoesNotExist:
+            return Response(
+                {'error': f'Form kind "{form_kind_name}" not found or inactive'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Base queryset
+        queryset = ApplicationForm.objects.filter(
+            kind=form_kind,
+            user=request.user
+        )
+
+        stats = self._calculate_form_stats(queryset)
+        return Response({'statistics': stats}, status=status.HTTP_200_OK)
+
+    def _calculate_form_stats(self, queryset):
+        """Calculate comprehensive statistics for a queryset"""
+        from django.db.models import Count, Q
+        from django.utils import timezone
+        from datetime import timedelta
+
+        total_count = queryset.count()
+
+        if total_count == 0:
+            return {
+                'total_forms': 0,
+                'submitted_forms': 0,
+                'paid_forms': 0,
+                'pending_forms': 0,
+                'recent_activity': {
+                    'today': 0,
+                    'this_week': 0,
+                    'this_month': 0,
+                },
+                'status_breakdown': {
+                    'submitted_and_paid': 0,
+                    'submitted_not_paid': 0,
+                    'not_submitted_paid': 0,
+                    'not_submitted_not_paid': 0,
+                }
+            }
+
+        now = timezone.now()
+        today = now.date()
+        week_ago = today - timedelta(days=7)
+        month_ago = today - timedelta(days=30)
+
+        # Basic counts
+        submitted_count = queryset.filter(submitted=True).count()
+        paid_count = queryset.filter(payoff=True).count()
+        pending_count = queryset.filter(submitted=False).count()
+
+        # Recent activity
+        recent_stats = {
+            'today': queryset.filter(created_at__date=today).count(),
+            'this_week': queryset.filter(created_at__date__gte=week_ago).count(),
+            'this_month': queryset.filter(created_at__date__gte=month_ago).count(),
+        }
+
+        # Status breakdown
+        status_breakdown = {
+            'submitted_and_paid': queryset.filter(submitted=True, payoff=True).count(),
+            'submitted_not_paid': queryset.filter(submitted=True, payoff=False).count(),
+            'not_submitted_paid': queryset.filter(submitted=False, payoff=True).count(),
+            'not_submitted_not_paid': queryset.filter(submitted=False, payoff=False).count(),
+        }
+
+        # Form-specific statistics (if certain fields exist)
+        additional_stats = {}
+
+        # Check if govern field exists and get distribution
+        if queryset.filter(govern__isnull=False).exists():
+            govern_stats = list(queryset.values('govern').annotate(count=Count('govern')).order_by('-count'))
+            additional_stats['govern_distribution'] = govern_stats[:10]  # Top 10
+
+        # Check if university field exists and get distribution
+        if queryset.filter(university__isnull=False).exists():
+            university_stats = list(
+                queryset.values('university').annotate(count=Count('university')).order_by('-count'))
+            additional_stats['university_distribution'] = university_stats[:10]  # Top 10
+
+        return {
+            'total_forms': total_count,
+            'submitted_forms': submitted_count,
+            'paid_forms': paid_count,
+            'pending_forms': pending_count,
+            'submission_rate': round((submitted_count / total_count) * 100, 2) if total_count > 0 else 0,
+            'payment_rate': round((paid_count / total_count) * 100, 2) if total_count > 0 else 0,
+            'recent_activity': recent_stats,
+            'status_breakdown': status_breakdown,
+            **additional_stats
+        }
     # UTILITY ENDPOINTS
     @swagger_auto_schema(
         method='get',
@@ -1206,207 +2303,7 @@ class ApplicantViewSet(viewsets.ModelViewSet):
             'available_filters': available_filters,
         })
 
-    # ============ FORM-SPECIFIC FILTERED ENDPOINTS ============
-
-    @swagger_auto_schema(
-        method='get',
-        manual_parameters=[
-            openapi.Parameter('page', openapi.IN_QUERY, description="Page number", type=openapi.TYPE_INTEGER),
-            openapi.Parameter('page_size', openapi.IN_QUERY, description="Number of results per page",
-                              type=openapi.TYPE_INTEGER),
-        ],
-        responses={200: ApplicantFormSerializer(many=True)},
-        operation_description="Get filtered applicant forms with pagination",
-        tags=['Applicant Forms']
-    )
-    @action(detail=False, methods=['get'], url_path='applicant/filtered')
-    def get_filtered_applicant_forms(self, request):
-        """Get filtered applicant forms with pagination"""
-        try:
-            applicant_kind = FormKind.objects.get(name=FormKind.APPLICANT, is_active=True)
-            queryset = self.filter_queryset(self.get_queryset().filter(kind=applicant_kind))
-
-            # Apply pagination
-            page = self.paginate_queryset(queryset)
-            if page is not None:
-                serializer = ApplicantFormSerializer(page, many=True)
-                return self.get_paginated_response(serializer.data)
-
-            serializer = ApplicantFormSerializer(queryset, many=True)
-            return Response({
-                'count': queryset.count(),
-                'results': serializer.data
-            })
-        except FormKind.DoesNotExist:
-            return Response({'error': 'Applicant form kind not found'},
-                            status=status.HTTP_400_BAD_REQUEST)
-
-    @swagger_auto_schema(
-        method='get',
-        manual_parameters=[
-            openapi.Parameter('page', openapi.IN_QUERY, description="Page number", type=openapi.TYPE_INTEGER),
-            openapi.Parameter('page_size', openapi.IN_QUERY, description="Number of results per page",
-                              type=openapi.TYPE_INTEGER),
-        ],
-        responses={200: TranslateFormSerializer(many=True)},
-        operation_description="Get filtered translation forms with pagination",
-        tags=['Translation Forms']
-    )
-    @action(detail=False, methods=['get'], url_path='translate/filtered')
-    def get_filtered_translate_forms(self, request):
-        """Get filtered translation forms with pagination"""
-        try:
-            translate_kind = FormKind.objects.get(name=FormKind.TRANSLATE, is_active=True)
-            queryset = self.filter_queryset(self.get_queryset().filter(kind=translate_kind))
-
-            # Apply pagination
-            page = self.paginate_queryset(queryset)
-            if page is not None:
-                serializer = TranslateFormSerializer(page, many=True)
-                return self.get_paginated_response(serializer.data)
-
-            serializer = TranslateFormSerializer(queryset, many=True)
-            return Response({
-                'count': queryset.count(),
-                'results': serializer.data
-            })
-        except FormKind.DoesNotExist:
-            return Response({'error': 'Translate form kind not found'},
-                            status=status.HTTP_400_BAD_REQUEST)
-
-    @swagger_auto_schema(
-        method='get',
-        manual_parameters=[
-            openapi.Parameter('page', openapi.IN_QUERY, description="Page number", type=openapi.TYPE_INTEGER),
-            openapi.Parameter('page_size', openapi.IN_QUERY, description="Number of results per page",
-                              type=openapi.TYPE_INTEGER),
-        ],
-        responses={200: CancelCodeFormSerializer(many=True)},
-        operation_description="Get filtered cancel code forms with pagination",
-        tags=['Cancel Code Forms']
-    )
-    @action(detail=False, methods=['get'], url_path='cancelcode/filtered')
-    def get_filtered_cancelcode_forms(self, request):
-        """Get filtered cancel code forms with pagination"""
-        try:
-            cancelcode_kind = FormKind.objects.get(name=FormKind.CANCEL_CODE, is_active=True)
-            queryset = self.filter_queryset(self.get_queryset().filter(kind=cancelcode_kind))
-
-            # Apply pagination
-            page = self.paginate_queryset(queryset)
-            if page is not None:
-                serializer = CancelCodeFormSerializer(page, many=True)
-                return self.get_paginated_response(serializer.data)
-
-            serializer = CancelCodeFormSerializer(queryset, many=True)
-            return Response({
-                'count': queryset.count(),
-                'results': serializer.data
-            })
-        except FormKind.DoesNotExist:
-            return Response({'error': 'Cancel Code form kind not found'},
-                            status=status.HTTP_400_BAD_REQUEST)
-
-    @swagger_auto_schema(
-        method='get',
-        manual_parameters=[
-            openapi.Parameter('page', openapi.IN_QUERY, description="Page number", type=openapi.TYPE_INTEGER),
-            openapi.Parameter('page_size', openapi.IN_QUERY, description="Number of results per page",
-                              type=openapi.TYPE_INTEGER),
-        ],
-        responses={200: LangCourseFormSerializer(many=True)},
-        operation_description="Get filtered language course forms with pagination",
-        tags=['Language Course Forms']
-    )
-    @action(detail=False, methods=['get'], url_path='langcourse/filtered')
-    def get_filtered_langcourse_forms(self, request):
-        """Get filtered language course forms with pagination"""
-        try:
-            langcourse_kind = FormKind.objects.get(name=FormKind.LANGUAGE_COURSE, is_active=True)
-            queryset = self.filter_queryset(self.get_queryset().filter(kind=langcourse_kind))
-
-            # Apply pagination
-            page = self.paginate_queryset(queryset)
-            if page is not None:
-                serializer = LangCourseFormSerializer(page, many=True)
-                return self.get_paginated_response(serializer.data)
-
-            serializer = LangCourseFormSerializer(queryset, many=True)
-            return Response({
-                'count': queryset.count(),
-                'results': serializer.data
-            })
-        except FormKind.DoesNotExist:
-            return Response({'error': 'Language Course form kind not found'},
-                            status=status.HTTP_400_BAD_REQUEST)
-
-    @swagger_auto_schema(
-        method='get',
-        manual_parameters=[
-            openapi.Parameter('page', openapi.IN_QUERY, description="Page number", type=openapi.TYPE_INTEGER),
-            openapi.Parameter('page_size', openapi.IN_QUERY, description="Number of results per page",
-                              type=openapi.TYPE_INTEGER),
-        ],
-        responses={200: UniversityFeesFormSerializer(many=True)},
-        operation_description="Get filtered university fees forms with pagination",
-        tags=['University Fees Forms']
-    )
-    @action(detail=False, methods=['get'], url_path='universityfees/filtered')
-    def get_filtered_universityfees_forms(self, request):
-        """Get filtered university fees forms with pagination"""
-        try:
-            universityfees_kind = FormKind.objects.get(name=FormKind.UNIVERSITY_FEES, is_active=True)
-            queryset = self.filter_queryset(self.get_queryset().filter(kind=universityfees_kind))
-
-            # Apply pagination
-            page = self.paginate_queryset(queryset)
-            if page is not None:
-                serializer = UniversityFeesFormSerializer(page, many=True)
-                return self.get_paginated_response(serializer.data)
-
-            serializer = UniversityFeesFormSerializer(queryset, many=True)
-            return Response({
-                'count': queryset.count(),
-                'results': serializer.data
-            })
-        except FormKind.DoesNotExist:
-            return Response({'error': 'University Fees form kind not found'},
-                            status=status.HTTP_400_BAD_REQUEST)
-
-    @swagger_auto_schema(
-        method='get',
-        manual_parameters=[
-            openapi.Parameter('page', openapi.IN_QUERY, description="Page number", type=openapi.TYPE_INTEGER),
-            openapi.Parameter('page_size', openapi.IN_QUERY, description="Number of results per page",
-                              type=openapi.TYPE_INTEGER),
-        ],
-        responses={200: PublishFormSerializer(many=True)},
-        operation_description="Get filtered publish research forms with pagination",
-        tags=['Publish Research Forms']
-    )
-    @action(detail=False, methods=['get'], url_path='publish/filtered')
-    def get_filtered_publish_forms(self, request):
-        """Get filtered publish research forms with pagination"""
-        try:
-            publish_kind = FormKind.objects.get(name=FormKind.PUBLISH_RESEARCH, is_active=True)
-            queryset = self.filter_queryset(self.get_queryset().filter(kind=publish_kind))
-
-            # Apply pagination
-            page = self.paginate_queryset(queryset)
-            if page is not None:
-                serializer = PublishFormSerializer(page, many=True)
-                return self.get_paginated_response(serializer.data)
-
-            serializer = PublishFormSerializer(queryset, many=True)
-            return Response({
-                'count': queryset.count(),
-                'results': serializer.data
-            })
-        except FormKind.DoesNotExist:
-            return Response({'error': 'Publish Research form kind not found'},
-                            status=status.HTTP_400_BAD_REQUEST)
-
-    # ============ ADMIN-ONLY FILTERING ENDPOINTS ============
+   # ============ ADMIN-ONLY FILTERING ENDPOINTS ============
 
     @swagger_auto_schema(
         method='get',
