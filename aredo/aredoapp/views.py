@@ -446,10 +446,15 @@ class ApplicantViewSet(viewsets.ModelViewSet):
                               type=openapi.TYPE_INTEGER),
 
             # Filters
+            openapi.Parameter('touch', openapi.IN_QUERY, description="Filter by touch status (true/false)",
+                              type=openapi.TYPE_BOOLEAN),
             openapi.Parameter('submitted', openapi.IN_QUERY, description="Filter by submitted status (true/false)",
                               type=openapi.TYPE_BOOLEAN),
-            openapi.Parameter('payoff', openapi.IN_QUERY, description="Filter by payoff status (true/false)",
+            openapi.Parameter('approved', openapi.IN_QUERY, description="Filter by approved status (true/false)",
                               type=openapi.TYPE_BOOLEAN),
+              openapi.Parameter('accepted', openapi.IN_QUERY, description="Filter by accepted status (true/false)",
+                              type=openapi.TYPE_BOOLEAN),
+
             openapi.Parameter('date_from', openapi.IN_QUERY, description="Filter from date (YYYY-MM-DD)",
                               type=openapi.TYPE_STRING),
             openapi.Parameter('date_to', openapi.IN_QUERY, description="Filter to date (YYYY-MM-DD)",
@@ -473,7 +478,7 @@ class ApplicantViewSet(viewsets.ModelViewSet):
         """List Applicant Application Forms with filters and statistics"""
         return self._list_forms_with_filters(request, FormKind.APPLICANT, ApplicantFormSerializer,
                                              search_fields=['full_name', 'phone', 'email'],
-                                             filter_fields=['submitted', 'payoff'])
+                                             filter_fields=['touch', 'submitted', 'approved', 'accepted'])
 
     @swagger_auto_schema(
         method='get',
@@ -601,7 +606,7 @@ class ApplicantViewSet(viewsets.ModelViewSet):
         """List Cancel Code Application Forms with filters and statistics"""
         return self._list_forms_with_filters(request, FormKind.CANCEL_CODE, CancelCodeFormSerializer,
                                              search_fields=['full_name', 'phone', 'email'],
-                                             filter_fields=['submitted', 'payoff'])
+                                             filter_fields=['touch', 'submitted', 'approved'])
 
     @swagger_auto_schema(
         method='get',
@@ -715,7 +720,7 @@ class ApplicantViewSet(viewsets.ModelViewSet):
         """List Translation Application Forms with filters and statistics"""
         return self._list_forms_with_filters(request, FormKind.TRANSLATE, TranslateFormSerializer,
                                              search_fields=['full_name', 'phone', 'email'],
-                                             filter_fields=['submitted', 'payoff'])
+                                             filter_fields=['touch', 'received', 'submitted'])
 
     @swagger_auto_schema(
         method='get',
@@ -829,7 +834,7 @@ class ApplicantViewSet(viewsets.ModelViewSet):
         """List Language Course Application Forms with filters and statistics"""
         return self._list_forms_with_filters(request, FormKind.LANGUAGE_COURSE, LangCourseFormSerializer,
                                              search_fields=['full_name', 'phone', 'email'],
-                                             filter_fields=['submitted', 'payoff'])
+                                             filter_fields=[ 'touch', 'submitted', 'accepted'])
 
     @swagger_auto_schema(
         method='get',
@@ -948,7 +953,7 @@ class ApplicantViewSet(viewsets.ModelViewSet):
         """List University Fees Application Forms with filters and statistics"""
         return self._list_forms_with_filters(request, FormKind.UNIVERSITY_FEES, UniversityFeesFormSerializer,
                                              search_fields=['full_name', 'phone', 'email', 'university', 'department'],
-                                             filter_fields=['submitted', 'payoff'])
+                                             filter_fields=['touch', 'payoff', 'submitted'])
 
     @swagger_auto_schema(
         method='get',
@@ -1063,7 +1068,7 @@ class ApplicantViewSet(viewsets.ModelViewSet):
         """List Publish Research Application Forms"""
         return self._list_forms_with_filters(request, FormKind.PUBLISH_RESEARCH, PublishFormSerializer,
                                              search_fields=['full_name', 'email', 'phone'],
-                                             filter_fields=['submitted', 'payoff'])
+                                             filter_fields=['touch', 'payoff', 'submitted'])
 
 
     # FLIGHT ENDPOINTS
@@ -1168,7 +1173,7 @@ class ApplicantViewSet(viewsets.ModelViewSet):
         """List Flight Application Forms with filters and statistics"""
         return self._list_forms_with_filters(request, FormKind.FLIGHT, Flight,
                                              search_fields=['full_name', 'phone', 'passport'],
-                                             filter_fields=['submitted', 'payoff', 'govern'])
+                                             filter_fields=['touch', 'payoff', 'submitted'])
 
     @swagger_auto_schema(
         method='get',
@@ -1280,7 +1285,7 @@ class ApplicantViewSet(viewsets.ModelViewSet):
         """List Higher Education Application Forms with filters and statistics"""
         return self._list_forms_with_filters(request, FormKind.HIGHER_EDUCATION, HigherEducationFile,
                                              search_fields=['full_name', 'email', 'phone'],
-                                             filter_fields=['payoff'])
+                                             filter_fields=['touch', 'payoff'])
 
     @swagger_auto_schema(
         method='get',
@@ -1400,7 +1405,7 @@ class ApplicantViewSet(viewsets.ModelViewSet):
         return self._list_forms_with_filters(request, FormKind.RAHGERY, Rahgery,
                                              search_fields=['full_name', 'email', 'phone', 'passport', 'university',
                                                             'department'],
-                                             filter_fields=['submitted', 'payoff', 'university', 'department'])
+                                             filter_fields=['touch', 'payoff', 'submitted'])
 
     @swagger_auto_schema(
         method='get',
@@ -1514,7 +1519,7 @@ class ApplicantViewSet(viewsets.ModelViewSet):
         """List Istalal Application Forms with filters and statistics"""
         return self._list_forms_with_filters(request, FormKind.ISTALAL, Istalal,
                                              search_fields=['full_name', 'email', 'phone'],
-                                             filter_fields=['submitted', 'payoff'])
+                                             filter_fields=['touch', 'payoff', 'submitted'])
 
     @swagger_auto_schema(
         method='get',
@@ -1631,7 +1636,7 @@ class ApplicantViewSet(viewsets.ModelViewSet):
         """List Delvary Application Forms with filters and statistics"""
         return self._list_forms_with_filters(request, FormKind.DELVARY, Delvary,
                                              search_fields=['full_name', 'phone', 'address'],
-                                             filter_fields=['submitted', 'payoff', 'govern', 'nearestPoint'])
+                                             filter_fields=['touch', 'payoff', 'submitted'])
 
     @swagger_auto_schema(
         method='get',
@@ -1748,7 +1753,7 @@ class ApplicantViewSet(viewsets.ModelViewSet):
         """List TranslateIraq Application Forms with filters and statistics"""
         return self._list_forms_with_filters(request, FormKind.TRANSLATE_IRAQ, TranslateIraq,
                                              search_fields=['full_name', 'phone', 'address'],
-                                             filter_fields=['submitted', 'payoff', 'govern', 'nearestPoint'])
+                                             filter_fields=['touch', 'payoff', 'submitted'])
 
     @swagger_auto_schema(
         method='get',
@@ -1784,7 +1789,7 @@ class ApplicantViewSet(viewsets.ModelViewSet):
             for field in filter_fields:
                 value = request.query_params.get(field)
                 if value is not None:
-                    if field in ['submitted', 'payoff']:
+                    if field in ['submitted', 'payoff','touch', 'approved', 'accepted']:
                         # Boolean filters
                         queryset = queryset.filter(**{field: value.lower() == 'true'})
                     else:

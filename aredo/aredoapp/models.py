@@ -55,7 +55,22 @@ class University(models.Model):
     ]
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=255)
-    pdf = models.CharField(max_length=500)
+
+    def university_pdf_upload_to(instance, filename):
+        """Construct upload path for university PDFs"""
+        # Clean filename and ensure it's safe
+        clean_filename = filename.replace(' ', '_')
+        # Create path: uploads/universities/{country_code}/{university_name}/filename
+        country_code = instance.country.code.lower() if instance.country else 'unknown'
+        university_name = instance.name.replace(' ', '_').replace('/', '_')[:50]  # Limit length
+        return f'uploads/universities/{country_code}/{university_name}/{clean_filename}'
+
+    pdf = models.FileField(
+        upload_to=university_pdf_upload_to,
+        blank=True,
+        null=True,
+        help_text="PDF document for this university (brochure, info, etc.)"
+    )
     university_type = models.CharField(max_length=20, choices=UNIVERSITY_TYPES)
     country = models.ForeignKey(Country, on_delete=models.CASCADE, related_name='universities')
 
@@ -160,7 +175,7 @@ class FormKind(models.Model):
                 'department', 'pages', 'magazine', 'mushref'
             ],
         }
-        return required_fields_map.get(self.code, [])
+        return required_fields_map.get(self.name, [])
 
     @classmethod
     def get_active_kinds(cls):
@@ -289,7 +304,7 @@ class ApplicationForm(models.Model):
     def upload_to(instance, filename):
         """Construct upload path based on form kind and user"""
         user_folder = instance.user.username if hasattr(instance.user, 'username') else str(instance.user.id)
-        kind_folder = instance.kind.code if instance.kind else 'other'
+        kind_folder = instance.kind.name if instance.kind else 'other'
         return f'uploads/{kind_folder}/{user_folder}/{filename}'
 
     pdf = models.FileField(upload_to=upload_to, blank=True, null=True)
@@ -418,7 +433,7 @@ class ApplicationForm(models.Model):
 
     def _validate_by_kind(self):
         """Perform kind-specific validation"""
-        if self.kind.code == FormKind.APPLICANT:
+        if self.kind.name == FormKind.APPLICANT:
             if self.degree and self.degree == 'master' and not self.grad_univerBach:
                 raise ValidationError({
                     'grad_univerBach': 'Bachelor graduation university is required for Master degree applications'
@@ -428,7 +443,7 @@ class ApplicationForm(models.Model):
                     'grad_univermaster': 'Master graduation university is required for PhD applications'
                 })
 
-        elif self.kind.code == FormKind.UNIVERSITY_FEES:
+        elif self.kind.name == FormKind.UNIVERSITY_FEES:
             if self.univerFees and not self.univerFees.isdigit():
                 raise ValidationError({
                     'univerFees': 'University fees must be a valid number'
@@ -692,7 +707,4 @@ class News (models.Model):
 #     payoff = models.BooleanField(default=False)
 #     submitted = models.BooleanField(default=False)
 #
-#
-#
-#
-#
+
