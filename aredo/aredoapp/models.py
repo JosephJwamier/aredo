@@ -55,6 +55,7 @@ class University(models.Model):
     ]
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=255)
+    country = models.ForeignKey(Country, on_delete=models.CASCADE, related_name='universities')
 
     def university_pdf_upload_to(instance, filename):
         """Construct upload path for university PDFs"""
@@ -72,7 +73,6 @@ class University(models.Model):
         help_text="PDF document for this university (brochure, info, etc.)"
     )
     university_type = models.CharField(max_length=20, choices=UNIVERSITY_TYPES)
-    country = models.ForeignKey(Country, on_delete=models.CASCADE, related_name='universities')
 
     def __str__(self):
         return f"{self.name} - {self.country.name}"

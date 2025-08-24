@@ -318,7 +318,7 @@ class ApplicantViewSet(viewsets.ModelViewSet):
         valid_image_types = [
             'passport', 'perssonal_pic', 'certificate', 'cv','masterCertificate'
             'masterCv', 'rahgeryform', 'langCertificate', 'ID_front','ID_back','university_accept',
-            'form_accept','no_objection','rahgery_form'
+            'form_accept','no_objection','rahgery_form','other'
         ]
 
         created_images = []
@@ -379,7 +379,7 @@ class ApplicantViewSet(viewsets.ModelViewSet):
         manual_parameters=[
             openapi.Parameter('images', openapi.IN_FORM, description="Multiple image files", type=openapi.TYPE_FILE,
                               required=False),
-            openapi.Parameter('image_types', openapi.IN_FORM, description="Comma-separated image types",
+            openapi.Parameter('image_types', openapi.IN_FORM, description="Comma-separated image types(passport,perssonal_pic,certificate,cv,masterCertificate,masterCv,rahgeryform,langCertificate,ID_front,ID_back,university_accept,form_accept,no_objection,rahgery_form,other)",
                               type=openapi.TYPE_STRING, required=False),
         ],
         responses={201: ApplicantFormSerializer, 400: 'Bad Request'},
@@ -2366,121 +2366,6 @@ class ApplicantViewSet(viewsets.ModelViewSet):
 
 
 
-    @swagger_auto_schema(
-        method='get',
-        responses={200: ApplicationImageSerializer(many=True)},
-        operation_description="Get all images for a specific application",
-        tags=['Application Images']
-    )
-    @action(detail=True, methods=['get'], url_path='images')
-    def get_images(self, request, pk=None):
-        """Get all images for a specific application"""
-        application = self.get_object()
-
-        # Check permissions
-        if not (request.user.is_staff or request.user.is_superuser or application.user == request.user):
-            return Response(
-                {'error': 'Permission denied'},
-                status=status.HTTP_403_FORBIDDEN
-            )
-
-        images = application.images.all()
-        serializer = ApplicationImageSerializer(
-            images,
-            many=True,
-            context={'request': request}
-        )
-
-        return Response({
-            'count': images.count(),
-            'images': serializer.data
-        })
-
-    @swagger_auto_schema(
-        method='delete',
-        responses={204: 'Image deleted successfully'},
-        operation_description="Delete a specific image",
-        tags=['Application Images']
-    )
-    @action(detail=True, methods=['delete'], url_path='images/(?P<image_id>[^/.]+)')
-    def delete_image(self, request, pk=None, image_id=None):
-        """Delete a specific image"""
-        application = self.get_object()
-
-        # Check if user owns this application
-        if application.user != request.user:
-            return Response(
-                {'error': 'Permission denied'},
-                status=status.HTTP_403_FORBIDDEN
-            )
-
-        try:
-            image = application.images.get(id=image_id)
-            image.delete()  # This will also delete the file
-            return Response(
-                {'message': 'Image deleted successfully'},
-                status=status.HTTP_204_NO_CONTENT
-            )
-        except ApplicationImage.DoesNotExist:
-            return Response(
-                {'error': 'Image not found'},
-                status=status.HTTP_404_NOT_FOUND
-            )
-
-    # SOLUTION 1: Using manual_parameters instead of request_body
-    @swagger_auto_schema(
-        method='patch',
-        manual_parameters=[
-            openapi.Parameter(
-                'image_type',
-                openapi.IN_FORM,
-                description="Image type",
-                type=openapi.TYPE_STRING,
-                required=False
-            ),
-            openapi.Parameter(
-                'description',
-                openapi.IN_FORM,
-                description="Image description",
-                type=openapi.TYPE_STRING,
-                required=False
-            ),
-        ],
-        responses={200: ApplicationImageSerializer},
-        operation_description="Update image metadata",
-        tags=['Application Images']
-    )
-    @action(detail=True, methods=['patch'], url_path='images/(?P<image_id>[^/.]+)/update')
-    def update_image(self, request, pk=None, image_id=None):
-        """Update image metadata"""
-        application = self.get_object()
-
-        # Check if user owns this application
-        if application.user != request.user:
-            return Response(
-                {'error': 'Permission denied'},
-                status=status.HTTP_403_FORBIDDEN
-            )
-
-        try:
-            image = application.images.get(id=image_id)
-
-            # Update allowed fields
-            if 'image_type' in request.data:
-                image.image_type = request.data['image_type']
-            if 'description' in request.data:
-                image.description = request.data['description']
-
-            image.save()
-
-            serializer = ApplicationImageSerializer(image, context={'request': request})
-            return Response(serializer.data)
-
-        except ApplicationImage.DoesNotExist:
-            return Response(
-                {'error': 'Image not found'},
-                status=status.HTTP_404_NOT_FOUND
-            )
 
 
 # Admin Dashboard Views
