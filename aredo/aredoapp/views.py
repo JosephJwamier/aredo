@@ -473,7 +473,7 @@ class ApplicantViewSet(viewsets.ModelViewSet):
                               type=openapi.TYPE_BOOLEAN),
         ]
     )
-    @action(detail=False, methods=['get'], url_path='applicant/k')
+    @action(detail=False, methods=['get'], url_path='applicant/get')
     def list_applicant(self, request):
         """List Applicant Application Forms with filters and statistics"""
         return self._list_forms_with_filters(request, FormKind.APPLICANT, ApplicantFormSerializer,
@@ -601,7 +601,7 @@ class ApplicantViewSet(viewsets.ModelViewSet):
                               type=openapi.TYPE_BOOLEAN),
         ]
     )
-    @action(detail=False, methods=['get'], url_path='cancelcode')
+    @action(detail=False, methods=['get'], url_path='cancelcode/get')
     def list_cancelcode(self, request):
         """List Cancel Code Application Forms with filters and statistics"""
         return self._list_forms_with_filters(request, FormKind.CANCEL_CODE, CancelCodeFormSerializer,
@@ -715,7 +715,7 @@ class ApplicantViewSet(viewsets.ModelViewSet):
                               type=openapi.TYPE_BOOLEAN),
         ]
     )
-    @action(detail=False, methods=['get'], url_path='translate')
+    @action(detail=False, methods=['get'], url_path='translate/get')
     def list_translate(self, request):
         """List Translation Application Forms with filters and statistics"""
         return self._list_forms_with_filters(request, FormKind.TRANSLATE, TranslateFormSerializer,
@@ -829,7 +829,7 @@ class ApplicantViewSet(viewsets.ModelViewSet):
                               type=openapi.TYPE_BOOLEAN),
         ]
     )
-    @action(detail=False, methods=['get'], url_path='langcourse')
+    @action(detail=False, methods=['get'], url_path='langcourse/get')
     def list_langcourse(self, request):
         """List Language Course Application Forms with filters and statistics"""
         return self._list_forms_with_filters(request, FormKind.LANGUAGE_COURSE, LangCourseFormSerializer,
@@ -948,7 +948,7 @@ class ApplicantViewSet(viewsets.ModelViewSet):
                               type=openapi.TYPE_BOOLEAN),
         ]
     )
-    @action(detail=False, methods=['get'], url_path='universityfees')
+    @action(detail=False, methods=['get'], url_path='universityfees/get')
     def list_universityfees(self, request):
         """List University Fees Application Forms with filters and statistics"""
         return self._list_forms_with_filters(request, FormKind.UNIVERSITY_FEES, UniversityFeesFormSerializer,
@@ -1063,7 +1063,7 @@ class ApplicantViewSet(viewsets.ModelViewSet):
                               type=openapi.TYPE_BOOLEAN),
         ]
     )
-    @action(detail=False, methods=['get'], url_path='publish')
+    @action(detail=False, methods=['get'], url_path='publish/get')
     def list_publish(self, request):
         """List Publish Research Application Forms"""
         return self._list_forms_with_filters(request, FormKind.PUBLISH_RESEARCH, PublishFormSerializer,
@@ -1168,7 +1168,7 @@ class ApplicantViewSet(viewsets.ModelViewSet):
                               type=openapi.TYPE_BOOLEAN),
         ]
     )
-    @action(detail=False, methods=['get'], url_path='flight')
+    @action(detail=False, methods=['get'], url_path='flight/get')
     def list_flight(self, request):
         """List Flight Application Forms with filters and statistics"""
         return self._list_forms_with_filters(request, FormKind.FLIGHT, Flight,
@@ -1280,7 +1280,7 @@ class ApplicantViewSet(viewsets.ModelViewSet):
                               type=openapi.TYPE_BOOLEAN),
         ]
     )
-    @action(detail=False, methods=['get'], url_path='higher-education')
+    @action(detail=False, methods=['get'], url_path='higher-education/get')
     def list_higher_education(self, request):
         """List Higher Education Application Forms with filters and statistics"""
         return self._list_forms_with_filters(request, FormKind.HIGHER_EDUCATION, HigherEducationFile,
@@ -1399,7 +1399,7 @@ class ApplicantViewSet(viewsets.ModelViewSet):
                               type=openapi.TYPE_BOOLEAN),
         ]
     )
-    @action(detail=False, methods=['get'], url_path='rahgery')
+    @action(detail=False, methods=['get'], url_path='rahgery/get')
     def list_rahgery(self, request):
         """List Rahgery Application Forms with filters and statistics"""
         return self._list_forms_with_filters(request, FormKind.RAHGERY, Rahgery,
@@ -1514,7 +1514,7 @@ class ApplicantViewSet(viewsets.ModelViewSet):
                               type=openapi.TYPE_BOOLEAN),
         ]
     )
-    @action(detail=False, methods=['get'], url_path='istalal')
+    @action(detail=False, methods=['get'], url_path='istalal/get')
     def list_istalal(self, request):
         """List Istalal Application Forms with filters and statistics"""
         return self._list_forms_with_filters(request, FormKind.ISTALAL, Istalal,
@@ -1631,7 +1631,7 @@ class ApplicantViewSet(viewsets.ModelViewSet):
                               type=openapi.TYPE_BOOLEAN),
         ]
     )
-    @action(detail=False, methods=['get'], url_path='delvary')
+    @action(detail=False, methods=['get'], url_path='delvary/get')
     def list_delvary(self, request):
         """List Delvary Application Forms with filters and statistics"""
         return self._list_forms_with_filters(request, FormKind.DELVARY, Delvary,
@@ -1748,7 +1748,7 @@ class ApplicantViewSet(viewsets.ModelViewSet):
                               type=openapi.TYPE_BOOLEAN),
         ]
     )
-    @action(detail=False, methods=['get'], url_path='translate-iraq')
+    @action(detail=False, methods=['get'], url_path='translate-iraq/get')
     def list_translate_iraq(self, request):
         """List TranslateIraq Application Forms with filters and statistics"""
         return self._list_forms_with_filters(request, FormKind.TRANSLATE_IRAQ, TranslateIraq,
