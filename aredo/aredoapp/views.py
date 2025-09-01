@@ -3,7 +3,8 @@ from datetime import datetime
 from django.utils.text import slugify
 from django.core.files.storage import default_storage
 from django.db import transaction
-
+from rest_framework.exceptions import NotFound, ValidationError
+from django.http import Http404
 from django_filters.rest_framework import DjangoFilterBackend
 from .filters import *
 from rest_framework_simplejwt.views import TokenObtainPairView
@@ -156,20 +157,146 @@ class LogoutView(APIView):
             return Response({"error": str(e)}, status=400)
 
 
-class CountryListCreateView(generics.ListCreateAPIView):
+class CustomErrorMixin:
+    """Mixin to handle custom error responses"""
+
+    def handle_exception(self, exc):
+        """Override to return custom error format"""
+        if isinstance(exc, Http404) or isinstance(exc, NotFound):
+            custom_response = {
+                "success": False,
+                "error": {
+                    "message": str(exc),
+                    "status_code": 404
+                }
+            }
+            return Response(custom_response, status=status.HTTP_404_NOT_FOUND)
+
+        if isinstance(exc, ValidationError):
+            custom_response = {
+                "success": False,
+                "error": {
+                    "message": "Validation failed",
+                    "details": exc.detail,
+                    "status_code": 400
+                }
+            }
+            return Response(custom_response, status=status.HTTP_400_BAD_REQUEST)
+
+        # For other exceptions, use default handling
+        return super().handle_exception(exc)
+
+
+class CustomResponseMixin:
+    """Mixin to standardize API response format"""
+
+    def get_success_response(self, data, message, status_code=status.HTTP_200_OK):
+        return Response({
+            "success": True,
+            "message": message,
+            "data": data
+        }, status=status_code)
+
+    def get_error_response(self, message, status_code=status.HTTP_400_BAD_REQUEST):
+        return Response({
+            "success": False,
+            "message": message,
+            "data": None
+        }, status=status_code)
+
+
+class CountryListCreateView(CustomErrorMixin,generics.ListCreateAPIView):
     queryset = Country.objects.all()
     serializer_class = CountrySerializer
-    permission_classes = [IsAdminUser]  # only admin can access
+    permission_classes = [IsAdminUser]
     pagination_class = CustomPageNumberPagination
 
+    def list(self, request, *args, **kwargs):
+        # Get the default response from parent class
+        response = super().list(request, *args, **kwargs)
 
-class CountryRetrieveUpdateDestroyView(generics.RetrieveUpdateDestroyAPIView):
+        # Wrap in custom format
+        custom_response = {
+            "success": True,
+            "message": "Countries retrieved successfully",
+            "data": response.data
+        }
+
+        return Response(custom_response, status=status.HTTP_200_OK)
+
+    def create(self, request, *args, **kwargs):
+        # Get the default response from parent class
+        response = super().create(request, *args, **kwargs)
+
+        # Wrap in custom format
+        custom_response = {
+            "success": True,
+            "message": "Country created successfully",
+            "data": response.data
+        }
+
+        return Response(custom_response, status=response.status_code)
+
+
+class CountryRetrieveUpdateDestroyView(CustomErrorMixin,generics.RetrieveUpdateDestroyAPIView):
     queryset = Country.objects.all()
     serializer_class = CountrySerializer
     permission_classes = [IsAdminUser]
 
+    def retrieve(self, request, *args, **kwargs):
+        # Get the default response from parent class
+        response = super().retrieve(request, *args, **kwargs)
 
-class UniversityViewSet(viewsets.ModelViewSet):
+        # Wrap in custom format
+        custom_response = {
+            "success": True,
+            "message": "Country retrieved successfully",
+            "data": response.data
+        }
+
+        return Response(custom_response, status=status.HTTP_200_OK)
+
+    def update(self, request, *args, **kwargs):
+        # Get the default response from parent class
+        response = super().update(request, *args, **kwargs)
+
+        # Wrap in custom format
+        custom_response = {
+            "success": True,
+            "message": "Country updated successfully",
+            "data": response.data
+        }
+
+        return Response(custom_response, status=response.status_code)
+
+    def partial_update(self, request, *args, **kwargs):
+        # Get the default response from parent class
+        response = super().partial_update(request, *args, **kwargs)
+
+        # Wrap in custom format
+        custom_response = {
+            "success": True,
+            "message": "Country updated successfully",
+            "data": response.data
+        }
+
+        return Response(custom_response, status=response.status_code)
+
+    def destroy(self, request, *args, **kwargs):
+        # Get the default response from parent class
+        super().destroy(request, *args, **kwargs)
+
+        # Wrap in custom format
+        custom_response = {
+            "success": True,
+            "message": "Country deleted successfully",
+            "data": None
+        }
+
+        return Response(custom_response, status=status.HTTP_200_OK)
+
+
+class UniversityViewSet(CustomErrorMixin,viewsets.ModelViewSet):
     queryset = University.objects.all()
     serializer_class = UniversitySerializer
     pagination_class = CustomPageNumberPagination
@@ -179,13 +306,92 @@ class UniversityViewSet(viewsets.ModelViewSet):
             return [permissions.AllowAny()]  # Anyone can view
         return [permissions.IsAdminUser()]  # Only admin can add/delete/edit
 
+    def list(self, request, *args, **kwargs):
+        # Get the default response from parent class
+        response = super().list(request, *args, **kwargs)
+
+        # Wrap in custom format
+        custom_response = {
+            "success": True,
+            "message": "Universities retrieved successfully",
+            "data": response.data
+        }
+
+        return Response(custom_response, status=status.HTTP_200_OK)
+
+    def retrieve(self, request, *args, **kwargs):
+        # Get the default response from parent class
+        response = super().retrieve(request, *args, **kwargs)
+
+        # Wrap in custom format
+        custom_response = {
+            "success": True,
+            "message": "University retrieved successfully",
+            "data": response.data
+        }
+
+        return Response(custom_response, status=status.HTTP_200_OK)
+
+    def create(self, request, *args, **kwargs):
+        # Get the default response from parent class
+        response = super().create(request, *args, **kwargs)
+
+        # Wrap in custom format
+        custom_response = {
+            "success": True,
+            "message": "University created successfully",
+            "data": response.data
+        }
+
+        return Response(custom_response, status=response.status_code)
+
+    def update(self, request, *args, **kwargs):
+        # Get the default response from parent class
+        response = super().update(request, *args, **kwargs)
+
+        # Wrap in custom format
+        custom_response = {
+            "success": True,
+            "message": "University updated successfully",
+            "data": response.data
+        }
+
+        return Response(custom_response, status=response.status_code)
+
+    def partial_update(self, request, *args, **kwargs):
+        # Get the default response from parent class
+        response = super().partial_update(request, *args, **kwargs)
+
+        # Wrap in custom format
+        custom_response = {
+            "success": True,
+            "message": "University updated successfully",
+            "data": response.data
+        }
+
+        return Response(custom_response, status=response.status_code)
+
+    def destroy(self, request, *args, **kwargs):
+        # Get the default response from parent class
+        super().destroy(request, *args, **kwargs)
+
+        # Wrap in custom format
+        custom_response = {
+            "success": True,
+            "message": "University deleted successfully",
+            "data": None
+        }
+
+        return Response(custom_response, status=status.HTTP_200_OK)
+
+
 
 class MyTokenObtainPairView(TokenObtainPairView):
     serializer_class = MyTokenObtainPairSerializer
 
 
 # Form Kind Management Views
-class FormKindViewSet(viewsets.ModelViewSet):
+class FormKindViewSet(CustomErrorMixin, viewsets.ModelViewSet):
     """CRUD operations for Form Kinds - Admin only for modifications"""
     queryset = FormKind.objects.all()
     serializer_class = FormKindSerializer
@@ -195,6 +401,84 @@ class FormKindViewSet(viewsets.ModelViewSet):
         if self.request.method in permissions.SAFE_METHODS:
             return [permissions.AllowAny()]
         return [IsAdminUser()]
+
+    def list(self, request, *args, **kwargs):
+        # Get the default response from parent class
+        response = super().list(request, *args, **kwargs)
+
+        # Wrap in custom format
+        custom_response = {
+            "success": True,
+            "message": "Form kinds retrieved successfully",
+            "data": response.data
+        }
+
+        return Response(custom_response, status=status.HTTP_200_OK)
+
+    def retrieve(self, request, *args, **kwargs):
+        # Get the default response from parent class
+        response = super().retrieve(request, *args, **kwargs)
+
+        # Wrap in custom format
+        custom_response = {
+            "success": True,
+            "message": "Form kind retrieved successfully",
+            "data": response.data
+        }
+
+        return Response(custom_response, status=status.HTTP_200_OK)
+
+    def create(self, request, *args, **kwargs):
+        # Get the default response from parent class
+        response = super().create(request, *args, **kwargs)
+
+        # Wrap in custom format
+        custom_response = {
+            "success": True,
+            "message": "Form kind created successfully",
+            "data": response.data
+        }
+
+        return Response(custom_response, status=response.status_code)
+
+    def update(self, request, *args, **kwargs):
+        # Get the default response from parent class
+        response = super().update(request, *args, **kwargs)
+
+        # Wrap in custom format
+        custom_response = {
+            "success": True,
+            "message": "Form kind updated successfully",
+            "data": response.data
+        }
+
+        return Response(custom_response, status=response.status_code)
+
+    def partial_update(self, request, *args, **kwargs):
+        # Get the default response from parent class
+        response = super().partial_update(request, *args, **kwargs)
+
+        # Wrap in custom format
+        custom_response = {
+            "success": True,
+            "message": "Form kind updated successfully",
+            "data": response.data
+        }
+
+        return Response(custom_response, status=response.status_code)
+
+    def destroy(self, request, *args, **kwargs):
+        # Get the default response from parent class
+        super().destroy(request, *args, **kwargs)
+
+        # Wrap in custom format
+        custom_response = {
+            "success": True,
+            "message": "Form kind deleted successfully",
+            "data": None
+        }
+
+        return Response(custom_response, status=status.HTTP_200_OK)
 
     @swagger_auto_schema(
         method='get',
@@ -216,13 +500,30 @@ class FormKindViewSet(viewsets.ModelViewSet):
         page = self.paginate_queryset(active_kinds)
         if page is not None:
             serializer = self.get_serializer(page, many=True)
-            return self.get_paginated_response(serializer.data)
+            paginated_response = self.get_paginated_response(serializer.data)
+
+            # Wrap in custom format
+            custom_response = {
+                "success": True,
+                "message": "Active form kinds retrieved successfully",
+                "data": paginated_response.data
+            }
+
+            return Response(custom_response, status=status.HTTP_200_OK)
 
         serializer = self.get_serializer(active_kinds, many=True)
-        return Response({
-            'count': active_kinds.count(),
-            'results': serializer.data
-        })
+
+        # Wrap in custom format
+        custom_response = {
+            "success": True,
+            "message": "Active form kinds retrieved successfully",
+            "data": {
+                'count': active_kinds.count(),
+                'results': serializer.data
+            }
+        }
+
+        return Response(custom_response, status=status.HTTP_200_OK)
 
 
 class ApplicantViewSet(viewsets.ModelViewSet):
@@ -1773,7 +2074,12 @@ class ApplicantViewSet(viewsets.ModelViewSet):
             form_kind = FormKind.objects.get(name=form_kind_name, is_active=True)
         except FormKind.DoesNotExist:
             return Response(
-                {'error': f'Form kind "{form_kind_name}" not found or inactive'},
+                {
+            "success": False,
+            "error": {
+                "message": f'Form kind "{form_kind_name}" not found or inactive',
+                "statusCode": status.HTTP_400_BAD_REQUEST
+            }},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -1846,7 +2152,9 @@ class ApplicantViewSet(viewsets.ModelViewSet):
 
         # Prepare response
         response_data = {
-            'results': serializer.data,
+            "success": True,
+            "message": 'done',
+            "data": serializer.data,
             'count': queryset.count(),
             'page_info': {
                 'current_page': paginator.page.number if paginator.page else 1,
