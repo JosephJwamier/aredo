@@ -526,7 +526,7 @@ class FormKindViewSet(CustomErrorMixin, viewsets.ModelViewSet):
         return Response(custom_response, status=status.HTTP_200_OK)
 
 
-class ApplicantViewSet(viewsets.ModelViewSet):
+class ApplicantViewSet(CustomErrorMixin,viewsets.ModelViewSet):
     queryset = ApplicationForm.objects.all()
     serializer_class = ApplicationFormSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -2670,7 +2670,29 @@ class ApplicantViewSet(viewsets.ModelViewSet):
             'results': serializer.data
         })
 
+    def destroy(self, request, *args, **kwargs):
+        """Override destroy method to handle image cleanup for all form types"""
+        instance = self.get_object()
 
+        with transaction.atomic():
+            # Delete associated images if they exist
+            if hasattr(instance, 'images'):
+                for image in instance.images.all():
+                    try:
+                        # Delete physical file
+                        if image.image and default_storage.exists(image.image.name):
+                            default_storage.delete(image.image.name)
+                    except Exception as e:
+                        print(f"Error deleting image file: {str(e)}")
+
+            # Delete the form instance (this will cascade delete the image records)
+            instance.delete()
+
+            return Response(
+            {"success": True,
+                        'message': 'Form and associated images deleted successfully',
+             'status':status.HTTP_204_NO_CONTENT}
+            )
 
 
 
