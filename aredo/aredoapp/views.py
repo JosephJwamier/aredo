@@ -33,8 +33,7 @@ from .serializers import (
 )
 
 from rest_framework.pagination import PageNumberPagination
-from django.core.paginator import Paginator
-from django.core.files.uploadedfile import InMemoryUploadedFile
+
 from rest_framework.parsers import MultiPartParser, FormParser
 
 
