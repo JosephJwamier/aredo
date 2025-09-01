@@ -19,7 +19,7 @@ urlpatterns = [
 
     # Country endpoints
     path('countries/', CountryListCreateView.as_view(), name='country-list-create'),
-    path('countries/<int:pk>/', CountryRetrieveUpdateDestroyView.as_view(), name='country-detail'),
+    path('countries/<uuid:pk>/', CountryRetrieveUpdateDestroyView.as_view(), name='country-detail'),
 
     # University viewset endpoints
     path('', include(router.urls)),
@@ -27,8 +27,8 @@ urlpatterns = [
     # Admin user management endpoints
     path('admin/users/create/', AdminUserCreateView.as_view(), name='admin-user-create'),
     path('admin/users/', AdminUserListView.as_view(), name='admin-user-list'),
-    path('admin/users/<int:id>/', AdminUserDetailView.as_view(), name='admin-user-detail'),
-    path('admin/users/<int:id>/update/', AdminUserUpdateView.as_view(), name='admin-user-update'),
-    path('admin/users/<int:user_id>/toggle-status/', toggle_user_status, name='admin-user-toggle-status'),
+    path('admin/users/<uuid:id>/', AdminUserDetailView.as_view(), name='admin-user-detail'),
+    path('admin/users/<uuid:id>/update/', AdminUserUpdateView.as_view(), name='admin-user-update'),
+    path('admin/users/<uuid:user_id>/toggle-status/', toggle_user_status, name='admin-user-toggle-status'),
     path('api/admin/dashboard/', AdminDashboardView.as_view(), name='admin-dashboard'),
 ]
