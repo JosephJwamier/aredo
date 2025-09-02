@@ -1,10 +1,14 @@
 from django.conf import settings
+from django.core.validators import FileExtensionValidator
 from django.db import models
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 import uuid
 from django.core.exceptions import ValidationError
 import os
 from PIL import Image
+from django.utils.text import slugify
+from datetime import datetime
+
 
 class CustomUserManager(BaseUserManager):
     def create_user(self, phone_number, password=None, **extra_fields):
@@ -516,7 +520,6 @@ class ApplicationImage(models.Model):
     image = models.ImageField(upload_to=upload_to_images)
     image_type = models.CharField(
         max_length=20,
-        choices=IMAGE_TYPES,
         default='other',
         help_text="Type of document in the image"
     )
@@ -553,158 +556,194 @@ class ApplicationImage(models.Model):
             return round(self.file_size / (1024 * 1024), 2)
         return 0
 
-class News (models.Model):
-    head = models.CharField(max_length=255)
-    content = models.CharField(max_length=3000)
-    pic = models.FileField(upload_to='news/')
+
+class NewsType(models.Model):
+    """Model for categorizing news types"""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=100, unique=True)
+    slug = models.SlugField(max_length=100, unique=True, blank=True)
+    description = models.TextField(blank=True, null=True)
+    color = models.CharField(max_length=7, default='#007bff', help_text='Hex color code for UI')
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['name']
+        verbose_name = 'News Type'
+        verbose_name_plural = 'News Types'
 
     def __str__(self):
-        return self.head
+        return self.name
 
-# class Applicant(models.Model):
-#     DEGREE_CHOICES = [
-#         ('bachelor', 'Bachelor'),
-#         ('master', 'Master'),
-#         ('phd', 'PhD'),
-#     ]
-#
-#     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='applications')
-#     university = models.ForeignKey('University', on_delete=models.CASCADE, related_name='applicants')
-#     full_name = models.CharField(max_length=255)
-#     email = models.EmailField()
-#     phone = models .CharField(max_length=20)
-#     degreenum = models .CharField(max_length=20)
-#     passport = models .CharField(max_length=20)
-#     degree = models.CharField(max_length=20, choices=DEGREE_CHOICES)
-#     department = models.CharField(max_length=100)
-#     deepdepartment = models.CharField(max_length=100)
-#     grad_univerBach = models.CharField(max_length=100)
-#     grad_univermaster = models.CharField(max_length=100)
-#     traker = models.CharField(max_length=255)
-#     pdf = models.FileField(upload_to='applicant/')
-#     date_applied = models.DateTimeField(auto_now_add=True)
-#
-#
-#     touch = models.BooleanField(default=False)
-#     fees = models.CharField(max_length=100)
-#     submitted = models.BooleanField(default=False)
-#     approved = models.BooleanField(default=False)
-#     accepted = models.BooleanField(default=False)
-#
-#     def __str__(self):
-#         return f"{self.full_name} → {self.university.name}"
-#
-# class CancelCode (models.Model):
-#     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='cancelcode')
-#     university = models.ForeignKey('University', on_delete=models.CASCADE, related_name='cancelcode')
-#     full_name = models.CharField(max_length=255)
-#     email = models.EmailField()
-#     phone = models.CharField(max_length=255)
-#     traker = models.CharField(max_length=255)
-#     pdf = models.FileField(upload_to='cancelcode/')
-#
-#
-#     touch = models.BooleanField(default=False)
-#     fees = models.CharField(max_length=100)
-#     submitted = models.BooleanField(default=False)
-#     approved = models.BooleanField(default=False)
-#
-#
-#     def __str__(self):
-#         return f"{self.full_name} → {self.university.name}"
-#
-#
-#
-#
-# class Translate(models.Model):
-#     GOVERNORATE_CHOICES = [
-#         ('baghdad', 'Baghdad'),
-#         ('anbar', 'Anbar'),
-#         ('basra', 'Basra'),
-#         ('dhi_qar', 'Dhi Qar'),
-#         ('maysan', 'Maysan'),
-#         ('muthanna', 'Muthanna'),
-#         ('najaf', 'Najaf'),
-#         ('karbala', 'Karbala'),
-#         ('babil', 'Babil'),
-#         ('wasit', 'Wasit'),
-#         ('diwaniya', 'Diwaniya'),
-#         ('diyala', 'Diyala'),
-#         ('kirkuk', 'Kirkuk'),
-#         ('ninawa', 'Ninawa'),
-#         ('salah_al_din', 'Salah al-Din'),
-#         ('duhok', 'Duhok'),
-#         ('erbil', 'Erbil'),
-#         ('sulaymaniyah', 'Sulaymaniyah'),
-#         ('halabja', 'Halabja'),
-#     ]
-#
-#     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='translate')
-#     full_name = models.CharField(max_length=255)
-#     email = models.EmailField()
-#     phone = models.CharField(max_length=255)
-#     address = models.CharField(max_length=255)
-#     nearestPoint = models.CharField(max_length=255)
-#     govern = models.CharField(max_length=20, choices=GOVERNORATE_CHOICES)
-#
-#
-#     touch = models.BooleanField(default=False)
-#     fees = models.CharField(max_length=100)
-#     received = models.BooleanField(default=False)
-#     submitted = models.BooleanField(default=False)
-#
-#
-# class LangCourse(models.Model):
-#     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='langcourse')
-#     university = models.ForeignKey('University', on_delete=models.CASCADE, related_name='langcourse')
-#     full_name = models.CharField(max_length=255)
-#     email = models.EmailField()
-#     phone = models.CharField(max_length=255)
-#     passport = models.CharField(max_length=255)
-#     traker = models.CharField(max_length=255)
-#     pdf = models.FileField(upload_to='lang/')
-#
-#     touch = models.BooleanField(default=False)
-#     fees = models.CharField(max_length=100)
-#     submitted = models.BooleanField(default=False)
-#     accepted = models.BooleanField(default=False)
-#
-# class Universityfees(models.Model):
-#     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='fees')
-#     university = models.ForeignKey('University', on_delete=models.CASCADE, related_name='fees')
-#     full_name = models.CharField(max_length=255)
-#     email = models.EmailField()
-#     phone = models.CharField(max_length=255)
-#     department = models.CharField(max_length=255)
-#     univerFees = models.CharField(max_length=255)
-#     kind = models.CharField(max_length=255)
-#
-#
-#
-#     touch = models.BooleanField(default=False)
-#     payoff = models.BooleanField(default=False)
-#     fees = models.CharField(max_length=100)
-#     submitted = models.BooleanField(default=False)
-#
-#
-# class Publish (models.Model):
-#     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='publish')
-#     full_name = models.CharField(max_length=255)
-#     email = models.EmailField()
-#     phone = models.CharField(max_length=255)
-#     department = models.CharField(max_length=255)
-#     pages = models.CharField(max_length=255)
-#     magazine = models.CharField(max_length=255)
-#     mushref = models.CharField(max_length=255)
-#     publishResearch = models.BooleanField(default=False)
-#     time = models.DateTimeField(auto_now_add=True)
-#     stilal = models.BooleanField(default=False)
-#     international = models.BooleanField(default=False)
-#
-#
-#     touch = models.BooleanField(default=False)
-#     fees = models.CharField(max_length=100)
-#     payoff = models.BooleanField(default=False)
-#     submitted = models.BooleanField(default=False)
-#
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            self.slug = slugify(self.name)
+        super().save(*args, **kwargs)
 
+    @classmethod
+    def get_active_types(cls):
+        """Get all active news types"""
+        return cls.objects.filter(is_active=True)
+
+
+class News(models.Model):
+    """Enhanced News model with type relationship and improved structure"""
+
+    # Priority/Status choices
+    PRIORITY_CHOICES = [
+        ('low', 'Low'),
+        ('normal', 'Normal'),
+        ('high', 'High'),
+        ('urgent', 'Urgent'),
+    ]
+
+    STATUS_CHOICES = [
+        ('draft', 'Draft'),
+        ('published', 'Published'),
+        ('archived', 'Archived'),
+    ]
+
+    # Basic fields
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    title = models.CharField(max_length=255, help_text='News headline')
+    slug = models.SlugField(max_length=255, unique=True, blank=True)
+    content = models.TextField(max_length=5000, help_text='Main news content')
+    excerpt = models.CharField(max_length=300, blank=True, help_text='Brief summary for previews')
+
+    # Relationships
+    news_type = models.ForeignKey(
+        NewsType,
+        on_delete=models.CASCADE,
+        related_name='news_articles'
+    )
+
+    # Main/Featured image (keep for backward compatibility and featured image)
+
+
+    # Meta fields
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
+    priority = models.CharField(max_length=20, choices=PRIORITY_CHOICES, default='normal')
+    is_featured = models.BooleanField(default=False, help_text='Show in featured news section')
+    views_count = models.PositiveIntegerField(default=0)
+
+    # SEO fields
+    meta_title = models.CharField(max_length=60, blank=True, help_text='SEO title')
+    meta_description = models.CharField(max_length=160, blank=True, help_text='SEO description')
+
+    # Timestamps
+    published_at = models.DateTimeField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = 'News Article'
+        verbose_name_plural = 'News Articles'
+        indexes = [
+            models.Index(fields=['status', 'published_at']),
+            models.Index(fields=['news_type', 'is_featured']),
+            models.Index(fields=['slug']),
+        ]
+
+    def __str__(self):
+        return self.title
+
+    def save(self, *args, **kwargs):
+        # Auto-generate slug from title
+        if not self.slug:
+            self.slug = slugify(self.title)
+
+        # Auto-generate meta fields if empty
+        if not self.meta_title:
+            self.meta_title = self.title[:60]
+        if not self.meta_description and self.excerpt:
+            self.meta_description = self.excerpt[:160]
+        elif not self.meta_description:
+            self.meta_description = self.content[:160]
+
+        # Auto-generate excerpt if empty
+        if not self.excerpt:
+            self.excerpt = self.content[:297] + '...' if len(self.content) > 300 else self.content
+
+        super().save(*args, **kwargs)
+
+    @property
+    def is_published(self):
+        """Check if news is published"""
+        return self.status == 'published'
+
+    @property
+    def total_images(self):
+        """Get total count of associated images"""
+        return self.images.count()
+
+    def get_absolute_url(self):
+        """Get URL for the news article"""
+        return f'/news/{self.slug}/'
+
+    @classmethod
+    def get_published(cls):
+        """Get all published news"""
+        return cls.objects.filter(status='published')
+
+    @classmethod
+    def get_featured(cls):
+        """Get featured published news"""
+        return cls.objects.filter(status='published', is_featured=True)
+
+
+def custom_image_upload_path(instance, filename):
+    """
+    Custom upload path: news/newstitle/imagetypetimestep.extension
+    """
+    # Get file extension
+    ext = filename.split('.')[-1] if '.' in filename else 'jpg'
+
+    # Clean news title for directory name
+    news_title = slugify(instance.news.title)
+
+    # Create timestamp with microseconds
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')[:-3]  # microseconds to milliseconds
+
+    # Create filename: imagetype_timestamp.extension
+    new_filename = f"{instance.image_type}_{timestamp}.{ext}"
+
+    # Return full path: news/newstitle/imagetypetimestamp.extension
+    return os.path.join('news', news_title, new_filename)
+
+
+class NewsImage(models.Model):
+    IMAGE_TYPE_CHOICES = [
+        ('gallery', 'Gallery'),
+        ('inline', 'Inline'),
+        ('thumbnail', 'Thumbnail'),
+        ('banner', 'Banner'),
+        ('infographic', 'Infographic'),
+        ('other', 'Other'),
+    ]
+
+    news = models.ForeignKey('News', on_delete=models.CASCADE, related_name='images')
+    image = models.ImageField(upload_to=custom_image_upload_path)
+    image_type = models.CharField(max_length=20, choices=IMAGE_TYPE_CHOICES, default='gallery')
+    title = models.CharField(max_length=200, blank=True)
+    caption = models.TextField(blank=True)
+    order = models.PositiveIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['order', 'uploaded_at']
+        verbose_name = 'News Image'
+        verbose_name_plural = 'News Images'
+
+    def __str__(self):
+        return f"{self.news.title} - {self.image_type} - {self.uploaded_at}"
+
+    def delete(self, *args, **kwargs):
+        """Override delete to also remove the physical file"""
+        if self.image:
+            storage = self.image.storage
+            if storage.exists(self.image.name):
+                storage.delete(self.image.name)
+        super().delete(*args, **kwargs)

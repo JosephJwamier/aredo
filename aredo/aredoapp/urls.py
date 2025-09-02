@@ -7,6 +7,8 @@ from rest_framework_simplejwt.views import  TokenRefreshView
 router = DefaultRouter()
 router.register(r'universities', UniversityViewSet, basename='university')
 router.register(r'news', NewsViewSet)
+router.register(r'newstype', NewsTypeViewSet)
+router.register(r'news-images', NewsImageViewSet)
 router.register(r'forms', ApplicantViewSet)
 router.register(r'form-kinds', FormKindViewSet, basename='formkind')
 

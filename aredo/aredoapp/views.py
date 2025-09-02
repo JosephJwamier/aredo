@@ -1,5 +1,5 @@
 # Create your views here.
-from datetime import datetime
+from datetime import timedelta
 from django.utils.text import slugify
 from django.core.files.storage import default_storage
 from django.db import transaction
@@ -10,7 +10,7 @@ from .filters import *
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework import filters
-
+from django.utils import timezone
 from rest_framework.permissions import IsAdminUser
 
 from .serializers import *
@@ -2775,65 +2775,596 @@ class AdminDashboardView(APIView):
         })
 
 
+def custom_image_upload_path(instance, filename):
+    """
+    Custom upload path: news/newstitle/imagetypetimestep.extension
+    """
+    # Get file extension
+    ext = filename.split('.')[-1]
+
+    # Clean news title for directory name
+    news_title = slugify(instance.news.title)
+
+    # Create timestamp
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')[:-3]  # microseconds to milliseconds
+
+    # Create filename: imagetype_timestamp.extension
+    new_filename = f"{instance.image_type}_{timestamp}.{ext}"
+
+    # Return full path: news/newstitle/imagetypetimestamp.extension
+    return os.path.join('news', news_title, new_filename)
+
+
+class NewsTypeViewSet(viewsets.ModelViewSet):
+    """ViewSet for managing news types/categories"""
+    queryset = NewsType.objects.all()
+    serializer_class = NewsTypeSerializer
+    permission_classes = [IsSuperUserPermission]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['name', 'description']
+    ordering_fields = ['name', 'created_at']
+    ordering = ['name']
+
+    @swagger_auto_schema(
+        method='get',
+        responses={200: NewsTypeSerializer(many=True)},
+        operation_description="Get all active news types",
+        tags=['News Types']
+    )
+    @action(detail=False, methods=['get'], url_path='active')
+    def active_types(self, request):
+        """Get only active news types"""
+        active_types = NewsType.get_active_types()
+        serializer = self.get_serializer(active_types, many=True)
+        return Response({
+            'success': True,
+            'data': serializer.data,
+            'count': active_types.count()
+        })
+
+    @swagger_auto_schema(
+        method='get',
+        responses={200: openapi.Response(description="News type statistics")},
+        operation_description="Get statistics for news types",
+        tags=['News Types']
+    )
+    @action(detail=False, methods=['get'], url_path='stats')
+    def type_stats(self, request):
+        """Get statistics for news types"""
+        stats = []
+        for news_type in NewsType.objects.all():
+            stats.append({
+                'id': news_type.id,
+                'name': news_type.name,
+                'total_news': news_type.news_articles.count(),
+                'published_news': news_type.news_articles.filter(status='published').count(),
+                'draft_news': news_type.news_articles.filter(status='draft').count(),
+                'is_active': news_type.is_active
+            })
+
+        return Response({
+            'success': True,
+            'data': stats
+        })
+
+
 class NewsViewSet(viewsets.ModelViewSet):
-    queryset = News.objects.all()
+    """ViewSet for managing news articles with comprehensive functionality"""
+    queryset = News.objects.all().select_related('news_type').prefetch_related('images')
     serializer_class = NewsSerializer
-    permission_classes = [permissions.IsAuthenticated]
-    pagination_class = CustomPageNumberPagination
+    permission_classes = [IsSuperUserPermission]
+    parser_classes = [MultiPartParser, FormParser]
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['title', 'content', 'excerpt', 'news_type__name']
+    ordering_fields = ['created_at', 'published_at', 'title', 'views_count', 'priority']
+    ordering = ['-created_at']
 
-    def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
+    def get_serializer_class(self):
+        """Return appropriate serializer based on action"""
+        if self.action == 'create':
+            return NewsCreateSerializer
+        elif self.action in ['update', 'partial_update']:
+            return NewsUpdateSerializer
+        return NewsSerializer
 
-# class ApplicantViewSet(viewsets.ModelViewSet):
-#     queryset = Applicant.objects.all()
-#     serializer_class = ApplicantSerializer
-#     permission_classes = [permissions.IsAuthenticated]
-#
-#     def perform_create(self, serializer):
-#         serializer.save(user=self.request.user)
-#
-#
-#
-#
-# class CancelCodeViewSet(viewsets.ModelViewSet):
-#     queryset = CancelCode.objects.all()
-#     serializer_class = CancelCodeSerializer
-#     permission_classes = [permissions.IsAuthenticated]
-#
-#     def perform_create(self, serializer):
-#         serializer.save(user=self.request.user)
-#
-# class TranslateViewSet(viewsets.ModelViewSet):
-#     queryset = Translate.objects.all()
-#     serializer_class = TranslateSerializer
-#     permission_classes = [permissions.IsAuthenticated]
-#
-#     def perform_create(self, serializer):
-#         serializer.save(user=self.request.user)
-#
-#
-# class LangCourseViewSet(viewsets.ModelViewSet):
-#     queryset = LangCourse.objects.all()
-#     serializer_class = LangCourseSerializer
-#     permission_classes = [permissions.IsAuthenticated]
-#
-#     def perform_create(self, serializer):
-#         serializer.save(user=self.request.user)
-#
-#
-# class UniversityFeesViewSet(viewsets.ModelViewSet):
-#     queryset = Universityfees.objects.all()
-#     serializer_class = UniversityFeesSerializer
-#     permission_classes = [permissions.IsAuthenticated]
-#
-#     def perform_create(self, serializer):
-#         serializer.save(user=self.request.user)
-#
-#
-# class PublishViewSet(viewsets.ModelViewSet):
-#     queryset = Publish.objects.all()
-#     serializer_class = PublishSerializer
-#     permission_classes = [permissions.IsAuthenticated]
-#
-#     def perform_create(self, serializer):
-#         serializer.save(user=self.request.user)
+    def get_queryset(self):
+        """Filter queryset based on user permissions"""
+        queryset = super().get_queryset()
+
+        # Non-authenticated users can only see published news
+        if not self.request.user.is_authenticated:
+            return queryset.filter(status='published')
+
+        # Staff can see all, regular users see published + their drafts if applicable
+        if not (self.request.user.is_staff or self.request.user.is_superuser):
+            return queryset.filter(status='published')
+
+        return queryset
+
+    def handle_image_uploads(self, news_instance, request):
+        """Handle multiple image uploads for news with custom path"""
+        uploaded_files = request.FILES.getlist('images')
+        image_types = request.data.get('image_types', '').split(',') if request.data.get('image_types') else []
+        image_titles = request.data.get('image_titles', '').split(',') if request.data.get('image_titles') else []
+        image_captions = request.data.get('image_captions', '').split(',') if request.data.get('image_captions') else []
+
+        if not uploaded_files:
+            return [], []
+
+        valid_image_types = ['gallery', 'inline', 'thumbnail', 'banner', 'infographic', 'other']
+        created_images = []
+        errors = []
+
+        for i, image_file in enumerate(uploaded_files):
+            try:
+                # Validate image
+                if image_file.size > 10 * 1024 * 1024:  # 10MB limit
+                    errors.append(f"Image too large (max 10MB): {image_file.name}")
+                    continue
+
+                # Get image metadata
+                image_type = 'gallery'  # default
+                if i < len(image_types) and image_types[i].strip():
+                    requested_type = image_types[i].strip().lower()
+                    if requested_type in valid_image_types:
+                        image_type = requested_type
+
+                title = image_titles[i].strip() if i < len(image_titles) and image_titles[i].strip() else ''
+                caption = image_captions[i].strip() if i < len(image_captions) and image_captions[i].strip() else ''
+
+                # Create custom path for image
+                ext = image_file.name.split('.')[-1] if '.' in image_file.name else 'jpg'
+                news_title_slug = slugify(news_instance.title)
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')[:-3]
+                custom_filename = f"{image_type}_{timestamp}.{ext}"
+                custom_path = os.path.join('news', news_title_slug, custom_filename)
+
+                # Create NewsImage record with custom upload path
+                news_image = NewsImage.objects.create(
+                    news=news_instance,
+                    image=image_file,
+                    image_type=image_type,
+                    title=title,
+                    caption=caption,
+                    order=i
+                )
+
+                # Move the file to custom path if needed
+                if hasattr(news_image.image, 'name') and news_image.image.name != custom_path:
+                    # Save with custom path
+                    news_image.image.name = custom_path
+                    news_image.save(update_fields=['image'])
+
+                created_images.append(news_image)
+
+            except Exception as e:
+                error_msg = f"Error processing {image_file.name}: {str(e)}"
+                errors.append(error_msg)
+
+        return created_images, errors
+
+    def handle_image_deletion(self, news_instance):
+        """Delete all images associated with a news article"""
+        deleted_files = []
+        errors = []
+
+        try:
+            images = news_instance.images.all()
+
+            for image in images:
+                try:
+                    if image.image and default_storage.exists(image.image.name):
+                        default_storage.delete(image.image.name)
+                        deleted_files.append(image.image.name)
+                    image.delete()
+                except Exception as e:
+                    errors.append(f"Error deleting image {image.id}: {str(e)}")
+
+            return deleted_files, errors
+
+        except Exception as e:
+            errors.append(f"Error during image deletion: {str(e)}")
+            return deleted_files, errors
+
+    @swagger_auto_schema(
+        request_body=NewsCreateSerializer,
+        manual_parameters=[
+            openapi.Parameter('images', openapi.IN_FORM, description="Multiple image files",
+                              type=openapi.TYPE_ARRAY, items=openapi.Items(type=openapi.TYPE_FILE), required=False),
+            openapi.Parameter('image_types', openapi.IN_FORM, description="('gallery', 'inline', 'thumbnail', 'banner', 'infographic', 'other')",
+                              type=openapi.TYPE_STRING, required=False),
+            openapi.Parameter('image_titles', openapi.IN_FORM, description="Comma-separated image titles",
+                              type=openapi.TYPE_STRING, required=False),
+            openapi.Parameter('image_captions', openapi.IN_FORM, description="Comma-separated image captions",
+                              type=openapi.TYPE_STRING, required=False),
+        ],
+        responses={201: NewsSerializer, 400: 'Bad Request'},
+        operation_description="Create news article with optional images",
+        tags=['News Articles']
+    )
+    def create(self, request, *args, **kwargs):
+        """Create news article with images"""
+        # Separate form data from image data
+        form_data = {k: v for k, v in request.data.items()
+                     if k not in ['images', 'image_types', 'image_titles', 'image_captions']}
+
+        with transaction.atomic():
+            # Create the news article
+            serializer = self.get_serializer(data=form_data)
+            if serializer.is_valid():
+                news_instance = serializer.save()
+
+                # Handle image uploads
+                created_images, image_errors = self.handle_image_uploads(news_instance, request)
+
+                # Prepare response
+                response_data = {
+                    'success': True,
+                    'message': 'News article created successfully',
+                    'data': NewsSerializer(news_instance, context={'request': request}).data
+                }
+
+                if created_images:
+                    response_data['images_info'] = {
+                        'count': len(created_images),
+                        'images': NewsImageSerializer(created_images, many=True, context={'request': request}).data
+                    }
+
+                if image_errors:
+                    response_data['image_warnings'] = image_errors
+
+                return Response(response_data, status=status.HTTP_201_CREATED)
+            else:
+                return Response({
+                    'success': False,
+                    'errors': serializer.errors
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+
+
+    def destroy(self, request, *args, **kwargs):
+        """Delete news article with all associated images"""
+        instance = self.get_object()
+
+        with transaction.atomic():
+            # Delete associated images
+            deleted_files, errors = self.handle_image_deletion(instance)
+
+            # Delete the news article
+            instance.delete()
+
+            response_data = {
+                'success': True,
+                'message': 'News article and associated images deleted successfully'
+            }
+
+            if deleted_files:
+                response_data['deleted_images_count'] = len(deleted_files)
+
+            if errors:
+                response_data['warnings'] = errors
+
+            return Response(response_data, status=status.HTTP_200_OK)
+
+    # ============ CUSTOM ENDPOINTS ============
+
+    @swagger_auto_schema(
+        method='get',
+        responses={200: NewsSerializer(many=True)},
+        operation_description="Get all published news articles",
+        tags=['News Articles']
+    )
+    @action(detail=False, methods=['get'], url_path='published')
+    def published_news(self, request):
+        """Get all published news"""
+        published = News.get_published().select_related('news_type').prefetch_related('images')
+
+        # Apply search and ordering only (no custom filters)
+        filtered_queryset = self.filter_queryset(published)
+        page = self.paginate_queryset(filtered_queryset)
+
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        serializer = self.get_serializer(filtered_queryset, many=True)
+        return Response({
+            'success': True,
+            'count': filtered_queryset.count(),
+            'data': serializer.data
+        })
+
+    @swagger_auto_schema(
+        method='get',
+        responses={200: NewsSerializer(many=True)},
+        operation_description="Get featured news articles",
+        tags=['News Articles']
+    )
+    @action(detail=False, methods=['get'], url_path='featured')
+    def featured_news(self, request):
+        """Get featured news"""
+        featured = News.get_featured().select_related('news_type').prefetch_related('images')[:10]
+        serializer = self.get_serializer(featured, many=True)
+        return Response({
+            'success': True,
+            'data': serializer.data,
+            'count': len(featured)
+        })
+
+    @swagger_auto_schema(
+        method='get',
+        manual_parameters=[
+            openapi.Parameter('type_id', openapi.IN_QUERY, description="News type ID", type=openapi.TYPE_INTEGER),
+            openapi.Parameter('limit', openapi.IN_QUERY, description="Number of articles to return",
+                              type=openapi.TYPE_INTEGER),
+        ],
+        responses={200: NewsSerializer(many=True)},
+        operation_description="Get news by type",
+        tags=['News Articles']
+    )
+    @action(detail=False, methods=['get'], url_path='by-type')
+    def news_by_type(self, request):
+        """Get news filtered by type"""
+        type_id = request.query_params.get('type_id')
+        limit = int(request.query_params.get('limit', 20))
+
+        if not type_id:
+            return Response({
+                'success': False,
+                'error': 'type_id parameter is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            news_type = NewsType.objects.get(id=type_id, is_active=True)
+            news_articles = news_type.news_articles.filter(status='published')[:limit]
+
+            serializer = self.get_serializer(news_articles, many=True)
+            return Response({
+                'success': True,
+                'type': NewsTypeSerializer(news_type).data,
+                'data': serializer.data,
+                'count': len(news_articles)
+            })
+
+        except NewsType.DoesNotExist:
+            return Response({
+                'success': False,
+                'error': 'News type not found or inactive'
+            }, status=status.HTTP_404_NOT_FOUND)
+
+    @swagger_auto_schema(
+        method='post',
+        responses={200: 'Success'},
+        operation_description="Increment view count for news article",
+        tags=['News Articles']
+    )
+    @action(detail=True, methods=['post'], url_path='view')
+    def increment_views(self, request, pk=None):
+        """Increment view count"""
+        news_article = self.get_object()
+        news_article.views_count += 1
+        news_article.save(update_fields=['views_count'])
+
+        return Response({
+            'success': True,
+            'views_count': news_article.views_count
+        })
+
+    @swagger_auto_schema(
+        method='get',
+        responses={200: openapi.Response(description="News statistics")},
+        operation_description="Get comprehensive news statistics",
+        tags=['News Articles']
+    )
+    @action(detail=False, methods=['get'], url_path='stats')
+    def news_stats(self, request):
+        """Get news statistics"""
+        from django.db.models import Count, Sum, Avg
+
+        now = timezone.now()
+        last_week = now - timedelta(days=7)
+        last_month = now - timedelta(days=30)
+
+        total_news = News.objects.count()
+        published_news = News.objects.filter(status='published').count()
+        draft_news = News.objects.filter(status='draft').count()
+        featured_news = News.objects.filter(is_featured=True).count()
+
+        # Recent activity
+        recent_stats = {
+            'this_week': News.objects.filter(created_at__gte=last_week).count(),
+            'this_month': News.objects.filter(created_at__gte=last_month).count(),
+        }
+
+        # Popular news (top 5 by views)
+        popular_news = News.objects.filter(status='published').order_by('-views_count')[:5]
+        popular_serializer = NewsSerializer(popular_news, many=True, context={'request': request})
+
+        # News by type
+        type_stats = list(
+            NewsType.objects.annotate(
+                news_count=Count('news_articles'),
+                published_count=Count('news_articles', filter=models.Q(news_articles__status='published'))
+            ).values('id', 'name', 'news_count', 'published_count')
+        )
+
+        return Response({
+            'success': True,
+            'data': {
+                'totals': {
+                    'total_news': total_news,
+                    'published_news': published_news,
+                    'draft_news': draft_news,
+                    'featured_news': featured_news,
+                },
+                'recent_activity': recent_stats,
+                'popular_news': popular_serializer.data,
+                'by_type': type_stats,
+                'total_views': News.objects.aggregate(Sum('views_count'))['views_count__sum'] or 0,
+                'avg_views': News.objects.aggregate(Avg('views_count'))['views_count__avg'] or 0,
+            }
+        })
+
+    @swagger_auto_schema(
+        method='get',
+        manual_parameters=[
+            openapi.Parameter('days', openapi.IN_QUERY, description="Number of days to look back",
+                              type=openapi.TYPE_INTEGER, default=7),
+        ],
+        responses={200: NewsSerializer(many=True)},
+        operation_description="Get recent news articles",
+        tags=['News Articles']
+    )
+    @action(detail=False, methods=['get'], url_path='recent')
+    def recent_news(self, request):
+        """Get recent news"""
+        days = int(request.query_params.get('days', 7))
+        since_date = timezone.now() - timedelta(days=days)
+
+        recent = News.objects.filter(
+            status='published',
+            published_at__gte=since_date
+        ).select_related('news_type').prefetch_related('images')[:20]
+
+        serializer = self.get_serializer(recent, many=True)
+        return Response({
+            'success': True,
+            'data': serializer.data,
+            'count': len(recent),
+            'period': f'Last {days} days'
+        })
+
+
+class NewsImageViewSet(viewsets.ModelViewSet):
+    """ViewSet for managing news images separately"""
+    queryset = NewsImage.objects.all()
+    serializer_class = NewsImageSerializer
+    permission_classes = [IsSuperUserPermission]
+    parser_classes = [MultiPartParser, FormParser]
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = ['news', 'image_type', 'is_active']
+    ordering_fields = ['order', 'uploaded_at']
+    ordering = ['order', 'uploaded_at']
+
+    def get_queryset(self):
+        """Filter images based on permissions"""
+        queryset = super().get_queryset()
+
+        # Filter by news article if provided
+        news_id = self.request.query_params.get('news_id')
+        if news_id:
+            queryset = queryset.filter(news_id=news_id)
+
+        return queryset
+
+    def destroy(self, request, *args, **kwargs):
+        """Delete image with file cleanup"""
+        instance = self.get_object()
+
+        try:
+            # Delete physical file
+            if instance.image and default_storage.exists(instance.image.name):
+                default_storage.delete(instance.image.name)
+
+            # Delete database record
+            instance.delete()
+
+            return Response({
+                'success': True,
+                'message': 'Image deleted successfully'
+            }, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': f'Error deleting image: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @swagger_auto_schema(
+        method='post',
+        manual_parameters=[
+            openapi.Parameter(
+                'image_ids',
+                openapi.IN_FORM,
+                description="Comma-separated list of image IDs to delete",
+                type=openapi.TYPE_STRING,
+                required=True
+            )
+        ],
+        responses={
+            200: openapi.Response(
+                description="Success",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'success': openapi.Schema(type=openapi.TYPE_BOOLEAN),
+                        'message': openapi.Schema(type=openapi.TYPE_STRING),
+                        'deleted_count': openapi.Schema(type=openapi.TYPE_INTEGER),
+                        'errors': openapi.Schema(type=openapi.TYPE_ARRAY, items=openapi.Items(type=openapi.TYPE_STRING))
+                    }
+                )
+            ),
+            400: 'Bad Request'
+        },
+        operation_description="Bulk delete images by providing comma-separated image IDs",
+        tags=['News Images']
+    )
+    @action(detail=False, methods=['post'], url_path='bulk-delete')
+    def bulk_delete(self, request):
+        """Bulk delete images"""
+        # Handle both JSON and form data
+        if hasattr(request.data, 'get'):
+            # Form data or JSON
+            image_ids_input = request.data.get('image_ids', [])
+        else:
+            # Fallback
+            image_ids_input = []
+
+        # Handle different input formats
+        if isinstance(image_ids_input, str):
+            # Comma-separated string
+            try:
+                image_ids = [int(id.strip()) for id in image_ids_input.split(',') if id.strip()]
+            except ValueError:
+                return Response({
+                    'success': False,
+                    'error': 'Invalid image IDs format. Use comma-separated integers.'
+                }, status=status.HTTP_400_BAD_REQUEST)
+        elif isinstance(image_ids_input, list):
+            # Array of IDs
+            image_ids = image_ids_input
+        else:
+            image_ids = []
+
+        if not image_ids:
+            return Response({
+                'success': False,
+                'error': 'image_ids parameter is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        deleted_count = 0
+        errors = []
+
+        with transaction.atomic():
+            for image_id in image_ids:
+                try:
+                    image = NewsImage.objects.get(id=image_id)
+
+                    # Delete physical file
+                    if image.image and default_storage.exists(image.image.name):
+                        default_storage.delete(image.image.name)
+
+                    image.delete()
+                    deleted_count += 1
+
+                except NewsImage.DoesNotExist:
+                    errors.append(f'Image {image_id} not found')
+                except Exception as e:
+                    errors.append(f'Error deleting image {image_id}: {str(e)}')
+
+        return Response({
+            'success': True,
+            'message': f'Successfully deleted {deleted_count} images',
+            'deleted_count': deleted_count,
+            'errors': errors if errors else None
+        })
