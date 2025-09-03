@@ -300,6 +300,7 @@ class UniversityViewSet(CustomErrorMixin,viewsets.ModelViewSet):
     queryset = University.objects.all()
     serializer_class = UniversitySerializer
     pagination_class = CustomPageNumberPagination
+    parser_classes = [MultiPartParser, FormParser]
 
     def get_permissions(self):
         if self.request.method in permissions.SAFE_METHODS:

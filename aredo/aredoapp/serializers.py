@@ -114,6 +114,8 @@ class CountrySerializer(serializers.ModelSerializer):
 
 class UniversitySerializer(serializers.ModelSerializer):
     country = serializers.PrimaryKeyRelatedField(queryset=Country.objects.all())
+    country_name = serializers.CharField(source='country.name', read_only=True)
+    pdf = serializers.FileField(required=False, allow_null=True)
 
     class Meta:
         model = University
@@ -160,7 +162,6 @@ class NewsSerializer(serializers.ModelSerializer):
     """Main serializer for News model with all relationships"""
     news_type = NewsTypeSerializer(read_only=True)
     images = NewsImageSerializer(many=True, read_only=True)
-    featured_image_url = serializers.SerializerMethodField()
     total_images = serializers.ReadOnlyField()
     is_published = serializers.ReadOnlyField()
     reading_time = serializers.SerializerMethodField()
@@ -168,21 +169,14 @@ class NewsSerializer(serializers.ModelSerializer):
     class Meta:
         model = News
         fields = ['id', 'title', 'slug', 'content', 'excerpt', 'news_type',
-                  'featured_image', 'featured_image_url', 'status', 'priority',
+                   'status', 'priority',
                   'is_featured', 'views_count', 'meta_title', 'meta_description',
                   'published_at', 'created_at', 'updated_at', 'images',
                   'total_images', 'is_published', 'reading_time']
         read_only_fields = ['slug', 'created_at', 'updated_at', 'views_count',
                             'total_images', 'is_published']
 
-    def get_featured_image_url(self, obj):
-        """Get full URL for featured image"""
-        if obj.featured_image:
-            request = self.context.get('request')
-            if request:
-                return request.build_absolute_uri(obj.featured_image.url)
-            return obj.featured_image.url
-        return None
+
 
     def get_reading_time(self, obj):
         """Calculate estimated reading time in minutes"""
@@ -199,7 +193,7 @@ class NewsCreateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = News
-        fields = ['title', 'content', 'excerpt', 'news_type_id', 'featured_image',
+        fields = ['title', 'content', 'excerpt', 'news_type_id',
                   'status', 'priority', 'is_featured', 'meta_title', 'meta_description',
                   'published_at']
 
@@ -242,7 +236,7 @@ class NewsUpdateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = News
-        fields = ['title', 'content', 'excerpt', 'news_type_id', 'news_type', 'featured_image',
+        fields = ['title', 'content', 'excerpt', 'news_type_id', 'news_type',
                   'status', 'priority', 'is_featured', 'meta_title', 'meta_description',
                   'published_at']
 
@@ -288,23 +282,15 @@ class NewsUpdateSerializer(serializers.ModelSerializer):
 class NewsListSerializer(serializers.ModelSerializer):
     """Lightweight serializer for news lists"""
     news_type = serializers.StringRelatedField()
-    featured_image_url = serializers.SerializerMethodField()
     image_count = serializers.SerializerMethodField()
 
     class Meta:
         model = News
-        fields = ['id', 'title', 'slug', 'excerpt', 'news_type', 'featured_image_url',
+        fields = ['id', 'title', 'slug', 'excerpt', 'news_type',
                   'status', 'is_featured', 'views_count', 'published_at',
                   'created_at', 'image_count']
 
-    def get_featured_image_url(self, obj):
-        """Get featured image URL"""
-        if obj.featured_image:
-            request = self.context.get('request')
-            if request:
-                return request.build_absolute_uri(obj.featured_image.url)
-            return obj.featured_image.url
-        return None
+
 
     def get_image_count(self, obj):
         """Get count of associated images"""
