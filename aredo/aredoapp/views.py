@@ -2853,7 +2853,7 @@ class NewsViewSet(viewsets.ModelViewSet):
     """ViewSet for managing news articles with comprehensive functionality"""
     queryset = News.objects.all().select_related('news_type').prefetch_related('images')
     serializer_class = NewsSerializer
-    permission_classes = [IsSuperUserPermission]
+    # permission_classes = [IsSuperUserPermission]
     parser_classes = [MultiPartParser, FormParser]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['title', 'content', 'excerpt', 'news_type__name']
