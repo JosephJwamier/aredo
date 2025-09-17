@@ -673,6 +673,47 @@ class ApplicantViewSet(CustomErrorMixin,viewsets.ModelViewSet):
 
         return created_images, errors
 
+    def get_serializer_class(self):
+        """Use different serializer for partial updates"""
+        if self.action == 'partial_update':
+            return ApplicationFormPartialSerializer
+        return self.serializer_class
+
+    def partial_update(self, request, *args, **kwargs):
+        """Handle PATCH requests for partial updates"""
+        instance = self.get_object()
+
+        # Check if the form is editable
+        if not instance.is_editable:
+            return Response(
+                {"error": "This application form can no longer be edited."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        # Use partial=True to enable partial updates
+        serializer = self.get_serializer(
+            instance,
+            data=request.data,
+            partial=True
+        )
+
+        if serializer.is_valid():
+            self.perform_update(serializer)
+            return Response(serializer.data)
+
+        return Response(
+            serializer.errors,
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    def perform_update(self, serializer):
+        """Custom update logic"""
+        serializer.save()
+
+        # Optional: Add logging or additional business logic
+        instance = serializer.instance
+        print(f"ApplicationForm {instance.id} updated by user {instance.user.id}")
+
     # APPLICANT ENDPOINTS - Updated with filters and statistics
     @swagger_auto_schema(
         method='post',
@@ -2796,15 +2837,29 @@ def custom_image_upload_path(instance, filename):
     return os.path.join('news', news_title, new_filename)
 
 
+from rest_framework.permissions import AllowAny
+
+
 class NewsTypeViewSet(viewsets.ModelViewSet):
     """ViewSet for managing news types/categories"""
     queryset = NewsType.objects.all()
     serializer_class = NewsTypeSerializer
-    permission_classes = [IsSuperUserPermission]
+    permission_classes = [IsSuperUserPermission]  # Default for non-GET methods
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['name', 'description']
     ordering_fields = ['name', 'created_at']
     ordering = ['name']
+
+    def get_permissions(self):
+        """
+        Override permissions to allow unauthenticated access for GET requests
+        """
+        if self.request.method == 'GET':
+            permission_classes = [AllowAny]
+        else:
+            permission_classes = [IsSuperUserPermission]
+
+        return [permission() for permission in permission_classes]
 
     @swagger_auto_schema(
         method='get',
@@ -2848,17 +2903,25 @@ class NewsTypeViewSet(viewsets.ModelViewSet):
             'data': stats
         })
 
-
 class NewsViewSet(viewsets.ModelViewSet):
     """ViewSet for managing news articles with comprehensive functionality"""
     queryset = News.objects.all().select_related('news_type').prefetch_related('images')
     serializer_class = NewsSerializer
-    # permission_classes = [IsSuperUserPermission]
+    permission_classes = [IsSuperUserPermission]
     parser_classes = [MultiPartParser, FormParser]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['title', 'content', 'excerpt', 'news_type__name']
     ordering_fields = ['created_at', 'published_at', 'title', 'views_count', 'priority']
     ordering = ['-created_at']
+
+    def get_permissions(self):
+        """
+        Override permissions to allow public access to GET requests
+        """
+        if self.action in ['list', 'retrieve', 'published_news', 'featured_news',
+                          'news_by_type', 'increment_views', 'news_stats', 'recent_news']:
+            return []  # No permissions required for these actions
+        return super().get_permissions()
 
     def get_serializer_class(self):
         """Return appropriate serializer based on action"""
@@ -2871,6 +2934,11 @@ class NewsViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         """Filter queryset based on user permissions"""
         queryset = super().get_queryset()
+
+        # For public endpoints, only show published news
+        if self.action in ['list', 'retrieve', 'published_news', 'featured_news',
+                          'news_by_type', 'increment_views', 'news_stats', 'recent_news']:
+            return queryset.filter(status='published')
 
         # Non-authenticated users can only see published news
         if not self.request.user.is_authenticated:
@@ -3021,8 +3089,6 @@ class NewsViewSet(viewsets.ModelViewSet):
                     'errors': serializer.errors
                 }, status=status.HTTP_400_BAD_REQUEST)
 
-
-
     def destroy(self, request, *args, **kwargs):
         """Delete news article with all associated images"""
         instance = self.get_object()
@@ -3052,12 +3118,12 @@ class NewsViewSet(viewsets.ModelViewSet):
     @swagger_auto_schema(
         method='get',
         responses={200: NewsSerializer(many=True)},
-        operation_description="Get all published news articles",
+        operation_description="Get all published news articles (Public Access)",
         tags=['News Articles']
     )
     @action(detail=False, methods=['get'], url_path='published')
     def published_news(self, request):
-        """Get all published news"""
+        """Get all published news - Public access"""
         published = News.get_published().select_related('news_type').prefetch_related('images')
 
         # Apply search and ordering only (no custom filters)
@@ -3078,12 +3144,12 @@ class NewsViewSet(viewsets.ModelViewSet):
     @swagger_auto_schema(
         method='get',
         responses={200: NewsSerializer(many=True)},
-        operation_description="Get featured news articles",
+        operation_description="Get featured news articles (Public Access)",
         tags=['News Articles']
     )
     @action(detail=False, methods=['get'], url_path='featured')
     def featured_news(self, request):
-        """Get featured news"""
+        """Get featured news - Public access"""
         featured = News.get_featured().select_related('news_type').prefetch_related('images')[:10]
         serializer = self.get_serializer(featured, many=True)
         return Response({
@@ -3094,18 +3160,192 @@ class NewsViewSet(viewsets.ModelViewSet):
 
     @swagger_auto_schema(
         method='get',
+        responses={200: NewsSerializer(many=True)},
+        operation_description="List all news articles with comprehensive filters, search and pagination",
+        tags=['News Articles'],
+        manual_parameters=[
+            # Pagination
+            openapi.Parameter('page', openapi.IN_QUERY, description="Page number", type=openapi.TYPE_INTEGER),
+            openapi.Parameter('page_size', openapi.IN_QUERY, description="Number of results per page",
+                              type=openapi.TYPE_INTEGER),
+
+            # Filters
+            openapi.Parameter('status', openapi.IN_QUERY, description="Filter by status (published/draft/archived)",
+                              type=openapi.TYPE_STRING),
+            openapi.Parameter('news_type', openapi.IN_QUERY, description="Filter by news type ID",
+                              type=openapi.TYPE_INTEGER),
+            openapi.Parameter('news_type_name', openapi.IN_QUERY, description="Filter by news type name",
+                              type=openapi.TYPE_STRING),
+            openapi.Parameter('is_featured', openapi.IN_QUERY, description="Filter by featured status (true/false)",
+                              type=openapi.TYPE_BOOLEAN),
+            openapi.Parameter('is_breaking', openapi.IN_QUERY,
+                              description="Filter by breaking news status (true/false)",
+                              type=openapi.TYPE_BOOLEAN),
+            openapi.Parameter('priority', openapi.IN_QUERY, description="Filter by priority level",
+                              type=openapi.TYPE_INTEGER),
+            openapi.Parameter('min_views', openapi.IN_QUERY, description="Filter by minimum view count",
+                              type=openapi.TYPE_INTEGER),
+            openapi.Parameter('max_views', openapi.IN_QUERY, description="Filter by maximum view count",
+                              type=openapi.TYPE_INTEGER),
+
+            # Date Filters
+            openapi.Parameter('created_from', openapi.IN_QUERY, description="Filter from creation date (YYYY-MM-DD)",
+                              type=openapi.TYPE_STRING),
+            openapi.Parameter('created_to', openapi.IN_QUERY, description="Filter to creation date (YYYY-MM-DD)",
+                              type=openapi.TYPE_STRING),
+            openapi.Parameter('published_from', openapi.IN_QUERY, description="Filter from published date (YYYY-MM-DD)",
+                              type=openapi.TYPE_STRING),
+            openapi.Parameter('published_to', openapi.IN_QUERY, description="Filter to published date (YYYY-MM-DD)",
+                              type=openapi.TYPE_STRING),
+
+            # Search
+            openapi.Parameter('search', openapi.IN_QUERY,
+                              description="Search in title, content, excerpt, news_type__name",
+                              type=openapi.TYPE_STRING),
+
+            # Ordering
+            openapi.Parameter('ordering', openapi.IN_QUERY,
+                              description="Order by field (prefix with - for desc). Options: created_at, published_at, title, views_count, priority",
+                              type=openapi.TYPE_STRING),
+
+            # Statistics
+            openapi.Parameter('include_stats', openapi.IN_QUERY, description="Include statistics in response",
+                              type=openapi.TYPE_BOOLEAN),
+        ]
+    )
+    @action(detail=False, methods=['get'], url_path='userget')
+    def list_news_filtered(self, request):
+        """List news articles with comprehensive filters, search and pagination"""
+        queryset = self.get_queryset()
+
+        # Apply filters
+        status_filter = request.query_params.get('status')
+        if status_filter:
+            queryset = queryset.filter(status=status_filter)
+
+        news_type_id = request.query_params.get('news_type')
+        if news_type_id:
+            try:
+                queryset = queryset.filter(news_type_id=int(news_type_id))
+            except ValueError:
+                pass
+
+        news_type_name = request.query_params.get('news_type_name')
+        if news_type_name:
+            queryset = queryset.filter(news_type__name__icontains=news_type_name)
+
+        is_featured = request.query_params.get('is_featured')
+        if is_featured is not None:
+            is_featured_bool = is_featured.lower() in ('true', '1')
+            queryset = queryset.filter(is_featured=is_featured_bool)
+
+        is_breaking = request.query_params.get('is_breaking')
+        if is_breaking is not None:
+            is_breaking_bool = is_breaking.lower() in ('true', '1')
+            queryset = queryset.filter(is_breaking=is_breaking_bool)
+
+        priority = request.query_params.get('priority')
+        if priority:
+            try:
+                queryset = queryset.filter(priority=int(priority))
+            except ValueError:
+                pass
+
+        min_views = request.query_params.get('min_views')
+        if min_views:
+            try:
+                queryset = queryset.filter(views_count__gte=int(min_views))
+            except ValueError:
+                pass
+
+        max_views = request.query_params.get('max_views')
+        if max_views:
+            try:
+                queryset = queryset.filter(views_count__lte=int(max_views))
+            except ValueError:
+                pass
+
+        # Date filters
+        created_from = request.query_params.get('created_from')
+        if created_from:
+            queryset = queryset.filter(created_at__gte=created_from)
+
+        created_to = request.query_params.get('created_to')
+        if created_to:
+            queryset = queryset.filter(created_at__lte=created_to + ' 23:59:59')
+
+        published_from = request.query_params.get('published_from')
+        if published_from:
+            queryset = queryset.filter(published_at__gte=published_from)
+
+        published_to = request.query_params.get('published_to')
+        if published_to:
+            queryset = queryset.filter(published_at__lte=published_to + ' 23:59:59')
+
+        # Apply search
+        search = request.query_params.get('search')
+        if search:
+            queryset = queryset.filter(
+                Q(title__icontains=search) |
+                Q(content__icontains=search) |
+                Q(excerpt__icontains=search) |
+                Q(news_type__name__icontains=search)
+            )
+
+        # Apply ordering
+        ordering = request.query_params.get('ordering', '-created_at')
+        # Validate ordering field
+        valid_ordering_fields = ['created_at', '-created_at', 'published_at', '-published_at',
+                                 'title', '-title', 'views_count', '-views_count', 'priority', '-priority']
+        if ordering in valid_ordering_fields:
+            queryset = queryset.order_by(ordering)
+        else:
+            queryset = queryset.order_by('-created_at')
+
+        # Get statistics before pagination if requested
+        include_stats = request.query_params.get('include_stats', '').lower() in ('true', '1')
+        statistics = None
+        if include_stats:
+            statistics = self._get_filtered_statistics(queryset)
+
+        # Pagination
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            result = self.get_paginated_response(serializer.data)
+
+            if statistics:
+                result.data['statistics'] = statistics
+
+            return result
+
+        # Non-paginated response
+        serializer = self.get_serializer(queryset, many=True)
+        response_data = {
+            'success': True,
+            'data': serializer.data,
+            'count': queryset.count()
+        }
+
+        if statistics:
+            response_data['statistics'] = statistics
+
+        return Response(response_data)
+
+    @swagger_auto_schema(
+        method='get',
         manual_parameters=[
             openapi.Parameter('type_id', openapi.IN_QUERY, description="News type ID", type=openapi.TYPE_INTEGER),
             openapi.Parameter('limit', openapi.IN_QUERY, description="Number of articles to return",
                               type=openapi.TYPE_INTEGER),
         ],
         responses={200: NewsSerializer(many=True)},
-        operation_description="Get news by type",
+        operation_description="Get news by type (Public Access)",
         tags=['News Articles']
     )
     @action(detail=False, methods=['get'], url_path='by-type')
     def news_by_type(self, request):
-        """Get news filtered by type"""
+        """Get news filtered by type - Public access"""
         type_id = request.query_params.get('type_id')
         limit = int(request.query_params.get('limit', 20))
 
@@ -3136,12 +3376,12 @@ class NewsViewSet(viewsets.ModelViewSet):
     @swagger_auto_schema(
         method='post',
         responses={200: 'Success'},
-        operation_description="Increment view count for news article",
+        operation_description="Increment view count for news article (Public Access)",
         tags=['News Articles']
     )
     @action(detail=True, methods=['post'], url_path='view')
     def increment_views(self, request, pk=None):
-        """Increment view count"""
+        """Increment view count - Public access"""
         news_article = self.get_object()
         news_article.views_count += 1
         news_article.save(update_fields=['views_count'])
@@ -3154,55 +3394,51 @@ class NewsViewSet(viewsets.ModelViewSet):
     @swagger_auto_schema(
         method='get',
         responses={200: openapi.Response(description="News statistics")},
-        operation_description="Get comprehensive news statistics",
+        operation_description="Get comprehensive news statistics (Public Access)",
         tags=['News Articles']
     )
     @action(detail=False, methods=['get'], url_path='stats')
     def news_stats(self, request):
-        """Get news statistics"""
+        """Get news statistics - Public access"""
         from django.db.models import Count, Sum, Avg
 
         now = timezone.now()
         last_week = now - timedelta(days=7)
         last_month = now - timedelta(days=30)
 
-        total_news = News.objects.count()
-        published_news = News.objects.filter(status='published').count()
-        draft_news = News.objects.filter(status='draft').count()
-        featured_news = News.objects.filter(is_featured=True).count()
+        # Only count published news for public stats
+        total_news = News.objects.filter(status='published').count()
+        featured_news = News.objects.filter(is_featured=True, status='published').count()
 
         # Recent activity
         recent_stats = {
-            'this_week': News.objects.filter(created_at__gte=last_week).count(),
-            'this_month': News.objects.filter(created_at__gte=last_month).count(),
+            'this_week': News.objects.filter(created_at__gte=last_week, status='published').count(),
+            'this_month': News.objects.filter(created_at__gte=last_month, status='published').count(),
         }
 
         # Popular news (top 5 by views)
         popular_news = News.objects.filter(status='published').order_by('-views_count')[:5]
         popular_serializer = NewsSerializer(popular_news, many=True, context={'request': request})
 
-        # News by type
+        # News by type (only published)
         type_stats = list(
             NewsType.objects.annotate(
-                news_count=Count('news_articles'),
                 published_count=Count('news_articles', filter=models.Q(news_articles__status='published'))
-            ).values('id', 'name', 'news_count', 'published_count')
+            ).values('id', 'name', 'published_count').filter(published_count__gt=0)
         )
 
         return Response({
             'success': True,
             'data': {
                 'totals': {
-                    'total_news': total_news,
-                    'published_news': published_news,
-                    'draft_news': draft_news,
+                    'published_news': total_news,
                     'featured_news': featured_news,
                 },
                 'recent_activity': recent_stats,
                 'popular_news': popular_serializer.data,
                 'by_type': type_stats,
-                'total_views': News.objects.aggregate(Sum('views_count'))['views_count__sum'] or 0,
-                'avg_views': News.objects.aggregate(Avg('views_count'))['views_count__avg'] or 0,
+                'total_views': News.objects.filter(status='published').aggregate(Sum('views_count'))['views_count__sum'] or 0,
+                'avg_views': News.objects.filter(status='published').aggregate(Avg('views_count'))['views_count__avg'] or 0,
             }
         })
 
@@ -3213,12 +3449,12 @@ class NewsViewSet(viewsets.ModelViewSet):
                               type=openapi.TYPE_INTEGER, default=7),
         ],
         responses={200: NewsSerializer(many=True)},
-        operation_description="Get recent news articles",
+        operation_description="Get recent news articles (Public Access)",
         tags=['News Articles']
     )
     @action(detail=False, methods=['get'], url_path='recent')
     def recent_news(self, request):
-        """Get recent news"""
+        """Get recent news - Public access"""
         days = int(request.query_params.get('days', 7))
         since_date = timezone.now() - timedelta(days=days)
 
@@ -3234,7 +3470,6 @@ class NewsViewSet(viewsets.ModelViewSet):
             'count': len(recent),
             'period': f'Last {days} days'
         })
-
 
 class NewsImageViewSet(viewsets.ModelViewSet):
     """ViewSet for managing news images separately"""

@@ -376,6 +376,47 @@ class ApplicationFormSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("This form type is currently not available.")
         return value
 
+
+class ApplicationFormPartialSerializer(ApplicationFormSerializer):
+    """Serializer specifically for partial updates with relaxed validation"""
+
+    class Meta(ApplicationFormSerializer.Meta):
+        # Make all editable fields optional for partial updates
+        extra_kwargs = {
+            'kind': {'required': False},
+            'university': {'required': False},
+            'full_name': {'required': False},
+            'email': {'required': False},
+            'phone': {'required': False},
+            'department': {'required': False},
+            'fees': {'required': False},
+        }
+
+    def validate(self, attrs):
+        """Lighter validation for partial updates"""
+        instance = getattr(self, 'instance', None)
+
+        # Check if form is editable
+        if instance and not instance.is_editable:
+            raise serializers.ValidationError(
+                "This application form can no longer be edited."
+            )
+
+        # Validate individual fields if they're being updated
+        if 'email' in attrs and attrs['email']:
+            if not self._is_valid_email(attrs['email']):
+                raise serializers.ValidationError({
+                    'email': 'Enter a valid email address.'
+                })
+
+        if 'phone' in attrs and attrs['phone']:
+            if not self._is_valid_phone(attrs['phone']):
+                raise serializers.ValidationError({
+                    'phone': 'Enter a valid phone number.'
+                })
+
+        return attrs
+
 class ApplicationImageSerializer(serializers.ModelSerializer):
     image_url = serializers.SerializerMethodField()
     file_size_mb = serializers.ReadOnlyField()
