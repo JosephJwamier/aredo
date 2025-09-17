@@ -588,51 +588,20 @@ class NewsType(models.Model):
 
 
 class News(models.Model):
-    """Enhanced News model with type relationship and improved structure"""
+    """News model with proper ForeignKey relationship"""
 
-    # Priority/Status choices
-    PRIORITY_CHOICES = [
-        ('low', 'Low'),
-        ('normal', 'Normal'),
-        ('high', 'High'),
-        ('urgent', 'Urgent'),
-    ]
 
-    STATUS_CHOICES = [
-        ('draft', 'Draft'),
-        ('published', 'Published'),
-        ('archived', 'Archived'),
-    ]
-
-    # Basic fields
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     title = models.CharField(max_length=255, help_text='News headline')
-    slug = models.SlugField(max_length=255, unique=True, blank=True)
-    content = models.TextField(max_length=5000, help_text='Main news content')
-    excerpt = models.CharField(max_length=300, blank=True, help_text='Brief summary for previews')
-
-    # Relationships
+    content = models.TextField(help_text='Main news content')
+    # CHANGED: Use ForeignKey instead of UUIDField
     news_type = models.ForeignKey(
         NewsType,
         on_delete=models.CASCADE,
-        related_name='news_articles'
+        related_name='news_articles',
+        help_text='News category'
     )
 
-    # Main/Featured image (keep for backward compatibility and featured image)
-
-
-    # Meta fields
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
-    priority = models.CharField(max_length=20, choices=PRIORITY_CHOICES, default='normal')
-    is_featured = models.BooleanField(default=False, help_text='Show in featured news section')
-    views_count = models.PositiveIntegerField(default=0)
-
-    # SEO fields
-    meta_title = models.CharField(max_length=60, blank=True, help_text='SEO title')
-    meta_description = models.CharField(max_length=160, blank=True, help_text='SEO description')
-
-    # Timestamps
-    published_at = models.DateTimeField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -640,65 +609,18 @@ class News(models.Model):
         ordering = ['-created_at']
         verbose_name = 'News Article'
         verbose_name_plural = 'News Articles'
-        indexes = [
-            models.Index(fields=['status', 'published_at']),
-            models.Index(fields=['news_type', 'is_featured']),
-            models.Index(fields=['slug']),
-        ]
 
     def __str__(self):
         return self.title
 
-    def save(self, *args, **kwargs):
-        # Auto-generate slug from title
-        if not self.slug:
-            self.slug = slugify(self.title)
-
-        # Auto-generate meta fields if empty
-        if not self.meta_title:
-            self.meta_title = self.title[:60]
-        if not self.meta_description and self.excerpt:
-            self.meta_description = self.excerpt[:160]
-        elif not self.meta_description:
-            self.meta_description = self.content[:160]
-
-        # Auto-generate excerpt if empty
-        if not self.excerpt:
-            self.excerpt = self.content[:297] + '...' if len(self.content) > 300 else self.content
-
-        super().save(*args, **kwargs)
-
-    @property
-    def is_published(self):
-        """Check if news is published"""
-        return self.status == 'published'
-
-    @property
-    def total_images(self):
-        """Get total count of associated images"""
-        return self.images.count()
-
-    def get_absolute_url(self):
-        """Get URL for the news article"""
-        return f'/news/{self.slug}/'
-
-    @classmethod
-    def get_published(cls):
-        """Get all published news"""
-        return cls.objects.filter(status='published')
-
-    @classmethod
-    def get_featured(cls):
-        """Get featured published news"""
-        return cls.objects.filter(status='published', is_featured=True)
-
 
 def custom_image_upload_path(instance, filename):
     """
-    Custom upload path: news/newstitle/imagetypetimestep.extension
+    Custom upload path: news/newstitle/originalname_timestamp.extension
     """
-    # Get file extension
-    ext = filename.split('.')[-1] if '.' in filename else 'jpg'
+    # Get file extension and original name
+    original_name = os.path.splitext(filename)[0]
+    ext = os.path.splitext(filename)[1][1:] if '.' in filename else 'jpg'
 
     # Clean news title for directory name
     news_title = slugify(instance.news.title)
@@ -706,26 +628,19 @@ def custom_image_upload_path(instance, filename):
     # Create timestamp with microseconds
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')[:-3]  # microseconds to milliseconds
 
-    # Create filename: imagetype_timestamp.extension
-    new_filename = f"{instance.image_type}_{timestamp}.{ext}"
+    # Create filename: originalname_timestamp.extension
+    # Clean the original name to be filesystem safe
+    safe_original_name = slugify(original_name)
+    new_filename = f"{safe_original_name}_{timestamp}.{ext}"
 
-    # Return full path: news/newstitle/imagetypetimestamp.extension
+    # Return full path: news/newstitle/originalname_timestamp.extension
     return os.path.join('news', news_title, new_filename)
 
-
 class NewsImage(models.Model):
-    IMAGE_TYPE_CHOICES = [
-        ('gallery', 'Gallery'),
-        ('inline', 'Inline'),
-        ('thumbnail', 'Thumbnail'),
-        ('banner', 'Banner'),
-        ('infographic', 'Infographic'),
-        ('other', 'Other'),
-    ]
 
     news = models.ForeignKey('News', on_delete=models.CASCADE, related_name='images')
     image = models.ImageField(upload_to=custom_image_upload_path)
-    image_type = models.CharField(max_length=20, choices=IMAGE_TYPE_CHOICES, default='gallery')
+
     title = models.CharField(max_length=200, blank=True)
     caption = models.TextField(blank=True)
     order = models.PositiveIntegerField(default=0)
@@ -738,7 +653,23 @@ class NewsImage(models.Model):
         verbose_name_plural = 'News Images'
 
     def __str__(self):
-        return f"{self.news.title} - {self.image_type} - {self.uploaded_at}"
+        return f"{self.news.title}  - {self.uploaded_at}"
+
+    @property
+    def file_size_human(self):
+        """Return human readable file size"""
+        if not self.image:
+            return "0 bytes"
+
+        try:
+            size = self.image.size
+            for unit in ['bytes', 'KB', 'MB', 'GB']:
+                if size < 1024.0:
+                    return f"{size:.1f} {unit}"
+                size /= 1024.0
+            return f"{size:.1f} TB"
+        except:
+            return "Unknown size"
 
     def delete(self, *args, **kwargs):
         """Override delete to also remove the physical file"""

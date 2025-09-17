@@ -121,7 +121,6 @@ class UniversitySerializer(serializers.ModelSerializer):
         model = University
         fields = '__all__'
 
-
 class NewsTypeSerializer(serializers.ModelSerializer):
     """Serializer for NewsType model"""
     news_count = serializers.SerializerMethodField()
@@ -133,8 +132,8 @@ class NewsTypeSerializer(serializers.ModelSerializer):
         read_only_fields = ['slug', 'created_at', 'updated_at', 'news_count']
 
     def get_news_count(self, obj):
-        """Get count of published news for this type"""
-        return obj.news_articles.filter(status='published').count()
+        """Get count of news for this type - now works with ForeignKey"""
+        return obj.news_articles.count()
 
 
 class NewsImageSerializer(serializers.ModelSerializer):
@@ -144,7 +143,7 @@ class NewsImageSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = NewsImage
-        fields = ['id', 'news', 'image', 'image_url', 'image_type', 'title',
+        fields = ['id', 'news', 'image', 'image_url', 'title',
                   'caption', 'order', 'is_active', 'uploaded_at', 'file_size_human']
         read_only_fields = ['uploaded_at', 'file_size_human']
 
@@ -159,142 +158,30 @@ class NewsImageSerializer(serializers.ModelSerializer):
 
 
 class NewsSerializer(serializers.ModelSerializer):
-    """Main serializer for News model with all relationships"""
-    news_type = NewsTypeSerializer(read_only=True)
+    """Main serializer for News model"""
     images = NewsImageSerializer(many=True, read_only=True)
-    total_images = serializers.ReadOnlyField()
-    is_published = serializers.ReadOnlyField()
-    reading_time = serializers.SerializerMethodField()
+    news_type_name = serializers.CharField(source='news_type.name', read_only=True)
 
     class Meta:
         model = News
-        fields = ['id', 'title', 'slug', 'content', 'excerpt', 'news_type',
-                   'status', 'priority',
-                  'is_featured', 'views_count', 'meta_title', 'meta_description',
-                  'published_at', 'created_at', 'updated_at', 'images',
-                  'total_images', 'is_published', 'reading_time']
-        read_only_fields = ['slug', 'created_at', 'updated_at', 'views_count',
-                            'total_images', 'is_published']
-
-
-
-    def get_reading_time(self, obj):
-        """Calculate estimated reading time in minutes"""
-        if obj.content:
-            word_count = len(obj.content.split())
-            # Average reading speed is 200-250 words per minute
-            return max(1, round(word_count / 225))
-        return 1
+        fields = ['id', 'title', 'content', 'news_type', 'news_type_name',
+                  'created_at', 'updated_at', 'images']
+        read_only_fields = ['created_at', 'updated_at']
 
 
 class NewsCreateSerializer(serializers.ModelSerializer):
     """Serializer for creating news articles"""
-    news_type_id = serializers.CharField(write_only=True)  # Changed to CharField to handle UUID
 
     class Meta:
         model = News
-        fields = ['title', 'content', 'excerpt', 'news_type_id',
-                  'status', 'priority', 'is_featured', 'meta_title', 'meta_description',
-                  'published_at']
+        fields = ['title', 'content', 'news_type']
 
-    def validate_news_type_id(self, value):
-        """Validate that news type exists and is active"""
-        try:
-            # Handle both UUID string and UUID object
-            if isinstance(value, str):
-                uuid_value = uuid.UUID(value)
-            else:
-                uuid_value = value
-
-            NewsType.objects.get(id=uuid_value, is_active=True)
-            return str(uuid_value)  # Return as string for consistency
-        except (NewsType.DoesNotExist, ValueError, TypeError):
-            raise serializers.ValidationError("Invalid or inactive news type")
-
-    def validate_published_at(self, value):
-        """Validate published_at is not in the future for published articles"""
-        if value and value > timezone.now():
-            raise serializers.ValidationError("Published date cannot be in the future")
+    def validate_news_type(self, value):
+        """Validate that news type is active"""
+        if not value.is_active:
+            raise serializers.ValidationError("Selected news type is not active")
         return value
 
-    def create(self, validated_data):
-        """Create news article with proper news_type assignment"""
-        news_type_id = validated_data.pop('news_type_id')
-        news_type = NewsType.objects.get(id=uuid.UUID(news_type_id))
-
-        # Auto-set published_at if status is published and no date provided
-        if validated_data.get('status') == 'published' and not validated_data.get('published_at'):
-            validated_data['published_at'] = timezone.now()
-
-        return News.objects.create(news_type=news_type, **validated_data)
-
-
-class NewsUpdateSerializer(serializers.ModelSerializer):
-    """Serializer for updating news articles"""
-    news_type_id = serializers.CharField(write_only=True, required=False)  # Changed to CharField
-    news_type = serializers.CharField(source='news_type.name', read_only=True)
-
-    class Meta:
-        model = News
-        fields = ['title', 'content', 'excerpt', 'news_type_id', 'news_type',
-                  'status', 'priority', 'is_featured', 'meta_title', 'meta_description',
-                  'published_at']
-
-    def validate_news_type_id(self, value):
-        """Validate that news type exists and is active"""
-        if value:
-            try:
-                # Handle both UUID string and UUID object
-                if isinstance(value, str):
-                    uuid_value = uuid.UUID(value)
-                else:
-                    uuid_value = value
-
-                NewsType.objects.get(id=uuid_value, is_active=True)
-                return str(uuid_value)  # Return as string for consistency
-            except (NewsType.DoesNotExist, ValueError, TypeError):
-                raise serializers.ValidationError("Invalid or inactive news type")
-        return value
-
-    def update(self, instance, validated_data):
-        """Update news article with proper news_type assignment"""
-        news_type_id = validated_data.pop('news_type_id', None)
-        if news_type_id:
-            try:
-                uuid_value = uuid.UUID(news_type_id)
-                instance.news_type = NewsType.objects.get(id=uuid_value)
-            except (NewsType.DoesNotExist, ValueError, TypeError):
-                raise serializers.ValidationError({"news_type_id": "Invalid news type"})
-
-        # Auto-set published_at if status changed to published
-        if (validated_data.get('status') == 'published' and
-                instance.status != 'published' and
-                not validated_data.get('published_at')):
-            validated_data['published_at'] = timezone.now()
-
-        for attr, value in validated_data.items():
-            setattr(instance, attr, value)
-
-        instance.save()
-        return instance
-
-
-class NewsListSerializer(serializers.ModelSerializer):
-    """Lightweight serializer for news lists"""
-    news_type = serializers.StringRelatedField()
-    image_count = serializers.SerializerMethodField()
-
-    class Meta:
-        model = News
-        fields = ['id', 'title', 'slug', 'excerpt', 'news_type',
-                  'status', 'is_featured', 'views_count', 'published_at',
-                  'created_at', 'image_count']
-
-
-
-    def get_image_count(self, obj):
-        """Get count of associated images"""
-        return obj.images.filter(is_active=True).count()
 
 
 class FormKindFieldSerializer(serializers.ModelSerializer):
@@ -414,6 +301,7 @@ class ApplicationFormPartialSerializer(ApplicationFormSerializer):
                 raise serializers.ValidationError({
                     'phone': 'Enter a valid phone number.'
                 })
+
 
         return attrs
 

@@ -11,8 +11,9 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework import filters
 from django.utils import timezone
-from rest_framework.permissions import IsAdminUser
+from rest_framework.permissions import IsAdminUser, IsAuthenticated
 
+import logging
 from .serializers import *
 from rest_framework.views import APIView
 from rest_framework import generics
@@ -208,7 +209,6 @@ class CustomResponseMixin:
 class CountryListCreateView(CustomErrorMixin,generics.ListCreateAPIView):
     queryset = Country.objects.all()
     serializer_class = CountrySerializer
-    permission_classes = [IsAdminUser]
     pagination_class = CustomPageNumberPagination
 
     def list(self, request, *args, **kwargs):
@@ -2308,120 +2308,9 @@ class ApplicantViewSet(CustomErrorMixin,viewsets.ModelViewSet):
             'status_breakdown': status_breakdown,
             **additional_stats
         }
-    # UTILITY ENDPOINTS
-    @swagger_auto_schema(
-        method='get',
-        responses={200: openapi.Response(
-            description="Form configuration data",
-            schema=openapi.Schema(
-                type=openapi.TYPE_OBJECT,
-                properties={
-                    'form_kinds': openapi.Schema(
-                        type=openapi.TYPE_ARRAY,
-                        items=openapi.Items(type=openapi.TYPE_OBJECT)
-                    ),
-                    'degree_choices': openapi.Schema(
-                        type=openapi.TYPE_ARRAY,
-                        items=openapi.Items(type=openapi.TYPE_STRING)
-                    ),
-                    'governorate_choices': openapi.Schema(
-                        type=openapi.TYPE_ARRAY,
-                        items=openapi.Items(type=openapi.TYPE_STRING)
-                    ),
-                    'required_fields': openapi.Schema(type=openapi.TYPE_OBJECT)
-                }
-            )
-        )},
-        operation_description="Get form configuration including available form types, choices and required fields",
-        tags=['Utility']
-    )
-    @action(detail=False, methods=['get'], url_path='form-config')
-    def form_config(self, request):
-        """Get form configuration for frontend"""
-        # Get active form kinds
-        active_kinds = FormKind.get_active_kinds()
-        form_kinds_data = []
-        required_fields = {}
 
-        for kind in active_kinds:
-            form_kinds_data.append({
-                'id': kind.id,
-                'name': kind.name,
-                'manager': kind.manager,
-                'phone': kind.phone,
-                'requires_university': kind.requires_university,
-                'requires_file_upload': kind.requires_file_upload,
-                'icon': kind.icon,
-            })
-            required_fields[kind.name] = kind.get_required_fields()
 
-        return Response({
-            'form_kinds': form_kinds_data,
-            'degree_choices': ApplicationForm.DEGREE_CHOICES,
-            'governorate_choices': ApplicationForm.GOVERNORATE_CHOICES,
-            'required_fields': required_fields
-        })
 
-    @swagger_auto_schema(
-        method='get',
-        responses={200: openapi.Response(
-            description="User's application statistics",
-            schema=openapi.Schema(
-                type=openapi.TYPE_OBJECT,
-                properties={
-                    'total_applications': openapi.Schema(type=openapi.TYPE_INTEGER),
-                    'by_status': openapi.Schema(type=openapi.TYPE_OBJECT),
-                    'by_kind': openapi.Schema(type=openapi.TYPE_OBJECT),
-                    'recent_applications': openapi.Schema(type=openapi.TYPE_STRING),
-                }
-            )
-        )},
-        operation_description="Get statistics about user's applications",
-        tags=['Utility']
-    )
-    @action(detail=False, methods=['get'], url_path='stats')
-    def user_stats(self, request):
-        """Get user application statistics"""
-        user_forms = self.get_queryset()
-
-        # Count by status
-        status_counts = {
-            'draft': user_forms.filter(touch=False, submitted=False).count(),
-            'in_progress': user_forms.filter(touch=True, submitted=False).count(),
-            'submitted': user_forms.filter(submitted=True, approved=False).count(),
-            'approved': user_forms.filter(approved=True, accepted=False).count(),
-            'accepted': user_forms.filter(accepted=True, received=False).count(),
-            'received': user_forms.filter(received=True).count(),
-        }
-
-        # Count by kind
-        kind_counts = {}
-        for kind in FormKind.get_active_kinds():
-            count = user_forms.filter(kind=kind).count()
-            if count > 0:
-                kind_counts[kind.name] = {
-                    'name': kind.name,
-                    'count': count
-                }
-
-        # Recent applications (last 5)
-        recent_forms = user_forms.order_by('-date_applied')[:5]
-        recent_data = []
-        for form in recent_forms:
-            recent_data.append({
-                'id': str(form.id),
-                'kind': form.kind.name,
-                'status': form.status_display,
-                'date_applied': form.date_applied,
-                'completion_percentage': form.get_completion_percentage(),
-            })
-
-        return Response({
-            'total_applications': user_forms.count(),
-            'by_status': status_counts,
-            'by_kind': kind_counts,
-            'recent_applications': recent_data,
-        })
 
     # # Enhanced filtering, searching, and ordering
     filter_backends = [
@@ -2657,60 +2546,6 @@ class ApplicantViewSet(CustomErrorMixin,viewsets.ModelViewSet):
             'available_filters': available_filters,
         })
 
-   # ============ ADMIN-ONLY FILTERING ENDPOINTS ============
-
-    @swagger_auto_schema(
-        method='get',
-        manual_parameters=[
-            openapi.Parameter('needs_attention', openapi.IN_QUERY,
-                              description="Filter applications needing admin attention",
-                              type=openapi.TYPE_BOOLEAN),
-            openapi.Parameter('created_this_month', openapi.IN_QUERY,
-                              description="Filter applications created this month",
-                              type=openapi.TYPE_BOOLEAN),
-            openapi.Parameter('created_today', openapi.IN_QUERY,
-                              description="Filter applications created today",
-                              type=openapi.TYPE_BOOLEAN),
-            openapi.Parameter('is_active_user', openapi.IN_QUERY,
-                              description="Filter by user active status",
-                              type=openapi.TYPE_BOOLEAN),
-            openapi.Parameter('user_email', openapi.IN_QUERY,
-                              description="Filter by user email",
-                              type=openapi.TYPE_STRING),
-            openapi.Parameter('page', openapi.IN_QUERY,
-                              description="Page number",
-                              type=openapi.TYPE_INTEGER),
-            openapi.Parameter('page_size', openapi.IN_QUERY,
-                              description="Number of results per page (max 100)",
-                              type=openapi.TYPE_INTEGER),
-        ],
-        responses={200: ApplicationFormSerializer(many=True)},
-        operation_description="Admin-only filtering with additional options and pagination",
-        tags=['Admin Filtering']
-    )
-    @action(detail=False, methods=['get'], url_path='admin-filtered',
-            permission_classes=[IsAdminUser])
-    def get_admin_filtered_forms(self, request):
-        """Admin-only comprehensive filtering with pagination"""
-        if not (request.user.is_staff or request.user.is_superuser):
-            return Response(
-                {'error': 'Admin access required'},
-                status=status.HTTP_403_FORBIDDEN
-            )
-
-        queryset = self.filter_queryset(self.get_queryset())
-
-        # Apply pagination
-        page = self.paginate_queryset(queryset)
-        if page is not None:
-            serializer = self.get_serializer(page, many=True)
-            return self.get_paginated_response(serializer.data)
-
-        serializer = self.get_serializer(queryset, many=True)
-        return Response({
-            'count': queryset.count(),
-            'results': serializer.data
-        })
 
     def destroy(self, request, *args, **kwargs):
         """Override destroy method to handle image cleanup for all form types"""
@@ -2817,24 +2652,24 @@ class AdminDashboardView(APIView):
         })
 
 
-def custom_image_upload_path(instance, filename):
-    """
-    Custom upload path: news/newstitle/imagetypetimestep.extension
-    """
-    # Get file extension
-    ext = filename.split('.')[-1]
-
-    # Clean news title for directory name
-    news_title = slugify(instance.news.title)
-
-    # Create timestamp
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')[:-3]  # microseconds to milliseconds
-
-    # Create filename: imagetype_timestamp.extension
-    new_filename = f"{instance.image_type}_{timestamp}.{ext}"
-
-    # Return full path: news/newstitle/imagetypetimestamp.extension
-    return os.path.join('news', news_title, new_filename)
+# def custom_image_upload_path(instance, filename):
+#     """
+#     Custom upload path: news/newstitle/imagetypetimestep.extension
+#     """
+#     # Get file extension
+#     ext = filename.split('.')[-1]
+#
+#     # Clean news title for directory name
+#     news_title = slugify(instance.news.title)
+#
+#     # Create timestamp
+#     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')[:-3]  # microseconds to milliseconds
+#
+#     # Create filename: imagetype_timestamp.extension
+#     new_filename = f"{instance.image_type}_{timestamp}.{ext}"
+#
+#     # Return full path: news/newstitle/imagetypetimestamp.extension
+#     return os.path.join('news', news_title, new_filename)
 
 
 from rest_framework.permissions import AllowAny
@@ -2903,112 +2738,89 @@ class NewsTypeViewSet(viewsets.ModelViewSet):
             'data': stats
         })
 
+
+
+
+logger = logging.getLogger(__name__)
+
+
+class NewsPagePagination(PageNumberPagination):
+    """Custom pagination for news articles"""
+    page_size = 10
+    page_size_query_param = 'page_size'
+    max_page_size = 100
+
+    def get_paginated_response(self, data):
+        return Response({
+            'success': True,
+            'count': self.page.paginator.count,
+            'total_pages': self.page.paginator.num_pages,
+            'current_page': self.page.number,
+            'page_size': self.get_page_size(self.request),
+            'next': self.get_next_link(),
+            'previous': self.get_previous_link(),
+            'data': data
+        })
+
+
 class NewsViewSet(viewsets.ModelViewSet):
-    """ViewSet for managing news articles with comprehensive functionality"""
-    queryset = News.objects.all().select_related('news_type').prefetch_related('images')
+    """ViewSet for managing news articles"""
+    queryset = News.objects.all().prefetch_related('images')
     serializer_class = NewsSerializer
-    permission_classes = [IsSuperUserPermission]
     parser_classes = [MultiPartParser, FormParser]
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ['title', 'content', 'excerpt', 'news_type__name']
-    ordering_fields = ['created_at', 'published_at', 'title', 'views_count', 'priority']
-    ordering = ['-created_at']
+    pagination_class = NewsPagePagination
 
     def get_permissions(self):
-        """
-        Override permissions to allow public access to GET requests
-        """
-        if self.action in ['list', 'retrieve', 'published_news', 'featured_news',
-                          'news_by_type', 'increment_views', 'news_stats', 'recent_news']:
-            return []  # No permissions required for these actions
-        return super().get_permissions()
+        """All GET actions without auth, POST/PUT/DELETE require auth"""
+        if self.action in ['list', 'retrieve', 'published_news', 'recent_news']:
+            return []  # No permissions required for GET actions
+        return [IsAuthenticated()]  # Auth required for create/update/delete
 
     def get_serializer_class(self):
         """Return appropriate serializer based on action"""
         if self.action == 'create':
             return NewsCreateSerializer
-        elif self.action in ['update', 'partial_update']:
-            return NewsUpdateSerializer
         return NewsSerializer
 
-    def get_queryset(self):
-        """Filter queryset based on user permissions"""
-        queryset = super().get_queryset()
-
-        # For public endpoints, only show published news
-        if self.action in ['list', 'retrieve', 'published_news', 'featured_news',
-                          'news_by_type', 'increment_views', 'news_stats', 'recent_news']:
-            return queryset.filter(status='published')
-
-        # Non-authenticated users can only see published news
-        if not self.request.user.is_authenticated:
-            return queryset.filter(status='published')
-
-        # Staff can see all, regular users see published + their drafts if applicable
-        if not (self.request.user.is_staff or self.request.user.is_superuser):
-            return queryset.filter(status='published')
-
-        return queryset
-
     def handle_image_uploads(self, news_instance, request):
-        """Handle multiple image uploads for news with custom path"""
+        """Handle image uploads with original name + datetime"""
         uploaded_files = request.FILES.getlist('images')
-        image_types = request.data.get('image_types', '').split(',') if request.data.get('image_types') else []
-        image_titles = request.data.get('image_titles', '').split(',') if request.data.get('image_titles') else []
-        image_captions = request.data.get('image_captions', '').split(',') if request.data.get('image_captions') else []
 
         if not uploaded_files:
             return [], []
 
-        valid_image_types = ['gallery', 'inline', 'thumbnail', 'banner', 'infographic', 'other']
         created_images = []
         errors = []
 
-        for i, image_file in enumerate(uploaded_files):
+        for image_file in uploaded_files:
             try:
-                # Validate image
-                if image_file.size > 10 * 1024 * 1024:  # 10MB limit
+                # Validate image size (10MB limit)
+                if image_file.size > 10 * 1024 * 1024:
                     errors.append(f"Image too large (max 10MB): {image_file.name}")
                     continue
 
-                # Get image metadata
-                image_type = 'gallery'  # default
-                if i < len(image_types) and image_types[i].strip():
-                    requested_type = image_types[i].strip().lower()
-                    if requested_type in valid_image_types:
-                        image_type = requested_type
+                # Create filename with original name + datetime
+                original_name = os.path.splitext(image_file.name)[0]
+                extension = os.path.splitext(image_file.name)[1]
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                new_filename = f"{original_name}_{timestamp}{extension}"
 
-                title = image_titles[i].strip() if i < len(image_titles) and image_titles[i].strip() else ''
-                caption = image_captions[i].strip() if i < len(image_captions) and image_captions[i].strip() else ''
+                # Update the file name
+                image_file.name = new_filename
 
-                # Create custom path for image
-                ext = image_file.name.split('.')[-1] if '.' in image_file.name else 'jpg'
-                news_title_slug = slugify(news_instance.title)
-                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')[:-3]
-                custom_filename = f"{image_type}_{timestamp}.{ext}"
-                custom_path = os.path.join('news', news_title_slug, custom_filename)
-
-                # Create NewsImage record with custom upload path
+                # Create NewsImage record
                 news_image = NewsImage.objects.create(
                     news=news_instance,
-                    image=image_file,
-                    image_type=image_type,
-                    title=title,
-                    caption=caption,
-                    order=i
+                    image=image_file
                 )
 
-                # Move the file to custom path if needed
-                if hasattr(news_image.image, 'name') and news_image.image.name != custom_path:
-                    # Save with custom path
-                    news_image.image.name = custom_path
-                    news_image.save(update_fields=['image'])
-
                 created_images.append(news_image)
+                logger.info(f"Image uploaded: {new_filename}")
 
             except Exception as e:
                 error_msg = f"Error processing {image_file.name}: {str(e)}"
                 errors.append(error_msg)
+                logger.error(error_msg)
 
         return created_images, errors
 
@@ -3029,38 +2841,37 @@ class NewsViewSet(viewsets.ModelViewSet):
                 except Exception as e:
                     errors.append(f"Error deleting image {image.id}: {str(e)}")
 
-            return deleted_files, errors
-
         except Exception as e:
             errors.append(f"Error during image deletion: {str(e)}")
-            return deleted_files, errors
+
+        return deleted_files, errors
 
     @swagger_auto_schema(
         request_body=NewsCreateSerializer,
         manual_parameters=[
             openapi.Parameter('images', openapi.IN_FORM, description="Multiple image files",
-                              type=openapi.TYPE_ARRAY, items=openapi.Items(type=openapi.TYPE_FILE), required=False),
-            openapi.Parameter('image_types', openapi.IN_FORM, description="('gallery', 'inline', 'thumbnail', 'banner', 'infographic', 'other')",
-                              type=openapi.TYPE_STRING, required=False),
-            openapi.Parameter('image_titles', openapi.IN_FORM, description="Comma-separated image titles",
-                              type=openapi.TYPE_STRING, required=False),
-            openapi.Parameter('image_captions', openapi.IN_FORM, description="Comma-separated image captions",
-                              type=openapi.TYPE_STRING, required=False),
+                              type=openapi.TYPE_ARRAY, items=openapi.Items(type=openapi.TYPE_FILE),
+                              required=False),
         ],
         responses={201: NewsSerializer, 400: 'Bad Request'},
-        operation_description="Create news article with optional images",
+        operation_description="Create news article with optional images (Auth Required)",
         tags=['News Articles']
     )
     def create(self, request, *args, **kwargs):
         """Create news article with images"""
         # Separate form data from image data
-        form_data = {k: v for k, v in request.data.items()
-                     if k not in ['images', 'image_types', 'image_titles', 'image_captions']}
+        form_data = {k: v for k, v in request.data.items() if k != 'images'}
 
-        with transaction.atomic():
-            # Create the news article
-            serializer = self.get_serializer(data=form_data)
-            if serializer.is_valid():
+        try:
+            with transaction.atomic():
+                # Create the news article
+                serializer = self.get_serializer(data=form_data)
+                if not serializer.is_valid():
+                    return Response({
+                        'success': False,
+                        'errors': serializer.errors
+                    }, status=status.HTTP_400_BAD_REQUEST)
+
                 news_instance = serializer.save()
 
                 # Handle image uploads
@@ -3074,402 +2885,297 @@ class NewsViewSet(viewsets.ModelViewSet):
                 }
 
                 if created_images:
-                    response_data['images_info'] = {
-                        'count': len(created_images),
-                        'images': NewsImageSerializer(created_images, many=True, context={'request': request}).data
-                    }
+                    response_data['images_uploaded'] = len(created_images)
 
                 if image_errors:
-                    response_data['image_warnings'] = image_errors
+                    response_data['image_errors'] = image_errors
 
                 return Response(response_data, status=status.HTTP_201_CREATED)
-            else:
-                return Response({
-                    'success': False,
-                    'errors': serializer.errors
-                }, status=status.HTTP_400_BAD_REQUEST)
 
-    def destroy(self, request, *args, **kwargs):
-        """Delete news article with all associated images"""
-        instance = self.get_object()
-
-        with transaction.atomic():
-            # Delete associated images
-            deleted_files, errors = self.handle_image_deletion(instance)
-
-            # Delete the news article
-            instance.delete()
-
-            response_data = {
-                'success': True,
-                'message': 'News article and associated images deleted successfully'
-            }
-
-            if deleted_files:
-                response_data['deleted_images_count'] = len(deleted_files)
-
-            if errors:
-                response_data['warnings'] = errors
-
-            return Response(response_data, status=status.HTTP_200_OK)
-
-    # ============ CUSTOM ENDPOINTS ============
-
-    @swagger_auto_schema(
-        method='get',
-        responses={200: NewsSerializer(many=True)},
-        operation_description="Get all published news articles (Public Access)",
-        tags=['News Articles']
-    )
-    @action(detail=False, methods=['get'], url_path='published')
-    def published_news(self, request):
-        """Get all published news - Public access"""
-        published = News.get_published().select_related('news_type').prefetch_related('images')
-
-        # Apply search and ordering only (no custom filters)
-        filtered_queryset = self.filter_queryset(published)
-        page = self.paginate_queryset(filtered_queryset)
-
-        if page is not None:
-            serializer = self.get_serializer(page, many=True)
-            return self.get_paginated_response(serializer.data)
-
-        serializer = self.get_serializer(filtered_queryset, many=True)
-        return Response({
-            'success': True,
-            'count': filtered_queryset.count(),
-            'data': serializer.data
-        })
-
-    @swagger_auto_schema(
-        method='get',
-        responses={200: NewsSerializer(many=True)},
-        operation_description="Get featured news articles (Public Access)",
-        tags=['News Articles']
-    )
-    @action(detail=False, methods=['get'], url_path='featured')
-    def featured_news(self, request):
-        """Get featured news - Public access"""
-        featured = News.get_featured().select_related('news_type').prefetch_related('images')[:10]
-        serializer = self.get_serializer(featured, many=True)
-        return Response({
-            'success': True,
-            'data': serializer.data,
-            'count': len(featured)
-        })
-
-    @swagger_auto_schema(
-        method='get',
-        responses={200: NewsSerializer(many=True)},
-        operation_description="List all news articles with comprehensive filters, search and pagination",
-        tags=['News Articles'],
-        manual_parameters=[
-            # Pagination
-            openapi.Parameter('page', openapi.IN_QUERY, description="Page number", type=openapi.TYPE_INTEGER),
-            openapi.Parameter('page_size', openapi.IN_QUERY, description="Number of results per page",
-                              type=openapi.TYPE_INTEGER),
-
-            # Filters
-            openapi.Parameter('status', openapi.IN_QUERY, description="Filter by status (published/draft/archived)",
-                              type=openapi.TYPE_STRING),
-            openapi.Parameter('news_type', openapi.IN_QUERY, description="Filter by news type ID",
-                              type=openapi.TYPE_INTEGER),
-            openapi.Parameter('news_type_name', openapi.IN_QUERY, description="Filter by news type name",
-                              type=openapi.TYPE_STRING),
-            openapi.Parameter('is_featured', openapi.IN_QUERY, description="Filter by featured status (true/false)",
-                              type=openapi.TYPE_BOOLEAN),
-            openapi.Parameter('is_breaking', openapi.IN_QUERY,
-                              description="Filter by breaking news status (true/false)",
-                              type=openapi.TYPE_BOOLEAN),
-            openapi.Parameter('priority', openapi.IN_QUERY, description="Filter by priority level",
-                              type=openapi.TYPE_INTEGER),
-            openapi.Parameter('min_views', openapi.IN_QUERY, description="Filter by minimum view count",
-                              type=openapi.TYPE_INTEGER),
-            openapi.Parameter('max_views', openapi.IN_QUERY, description="Filter by maximum view count",
-                              type=openapi.TYPE_INTEGER),
-
-            # Date Filters
-            openapi.Parameter('created_from', openapi.IN_QUERY, description="Filter from creation date (YYYY-MM-DD)",
-                              type=openapi.TYPE_STRING),
-            openapi.Parameter('created_to', openapi.IN_QUERY, description="Filter to creation date (YYYY-MM-DD)",
-                              type=openapi.TYPE_STRING),
-            openapi.Parameter('published_from', openapi.IN_QUERY, description="Filter from published date (YYYY-MM-DD)",
-                              type=openapi.TYPE_STRING),
-            openapi.Parameter('published_to', openapi.IN_QUERY, description="Filter to published date (YYYY-MM-DD)",
-                              type=openapi.TYPE_STRING),
-
-            # Search
-            openapi.Parameter('search', openapi.IN_QUERY,
-                              description="Search in title, content, excerpt, news_type__name",
-                              type=openapi.TYPE_STRING),
-
-            # Ordering
-            openapi.Parameter('ordering', openapi.IN_QUERY,
-                              description="Order by field (prefix with - for desc). Options: created_at, published_at, title, views_count, priority",
-                              type=openapi.TYPE_STRING),
-
-            # Statistics
-            openapi.Parameter('include_stats', openapi.IN_QUERY, description="Include statistics in response",
-                              type=openapi.TYPE_BOOLEAN),
-        ]
-    )
-    @action(detail=False, methods=['get'], url_path='userget')
-    def list_news_filtered(self, request):
-        """List news articles with comprehensive filters, search and pagination"""
-        queryset = self.get_queryset()
-
-        # Apply filters
-        status_filter = request.query_params.get('status')
-        if status_filter:
-            queryset = queryset.filter(status=status_filter)
-
-        news_type_id = request.query_params.get('news_type')
-        if news_type_id:
-            try:
-                queryset = queryset.filter(news_type_id=int(news_type_id))
-            except ValueError:
-                pass
-
-        news_type_name = request.query_params.get('news_type_name')
-        if news_type_name:
-            queryset = queryset.filter(news_type__name__icontains=news_type_name)
-
-        is_featured = request.query_params.get('is_featured')
-        if is_featured is not None:
-            is_featured_bool = is_featured.lower() in ('true', '1')
-            queryset = queryset.filter(is_featured=is_featured_bool)
-
-        is_breaking = request.query_params.get('is_breaking')
-        if is_breaking is not None:
-            is_breaking_bool = is_breaking.lower() in ('true', '1')
-            queryset = queryset.filter(is_breaking=is_breaking_bool)
-
-        priority = request.query_params.get('priority')
-        if priority:
-            try:
-                queryset = queryset.filter(priority=int(priority))
-            except ValueError:
-                pass
-
-        min_views = request.query_params.get('min_views')
-        if min_views:
-            try:
-                queryset = queryset.filter(views_count__gte=int(min_views))
-            except ValueError:
-                pass
-
-        max_views = request.query_params.get('max_views')
-        if max_views:
-            try:
-                queryset = queryset.filter(views_count__lte=int(max_views))
-            except ValueError:
-                pass
-
-        # Date filters
-        created_from = request.query_params.get('created_from')
-        if created_from:
-            queryset = queryset.filter(created_at__gte=created_from)
-
-        created_to = request.query_params.get('created_to')
-        if created_to:
-            queryset = queryset.filter(created_at__lte=created_to + ' 23:59:59')
-
-        published_from = request.query_params.get('published_from')
-        if published_from:
-            queryset = queryset.filter(published_at__gte=published_from)
-
-        published_to = request.query_params.get('published_to')
-        if published_to:
-            queryset = queryset.filter(published_at__lte=published_to + ' 23:59:59')
-
-        # Apply search
-        search = request.query_params.get('search')
-        if search:
-            queryset = queryset.filter(
-                Q(title__icontains=search) |
-                Q(content__icontains=search) |
-                Q(excerpt__icontains=search) |
-                Q(news_type__name__icontains=search)
-            )
-
-        # Apply ordering
-        ordering = request.query_params.get('ordering', '-created_at')
-        # Validate ordering field
-        valid_ordering_fields = ['created_at', '-created_at', 'published_at', '-published_at',
-                                 'title', '-title', 'views_count', '-views_count', 'priority', '-priority']
-        if ordering in valid_ordering_fields:
-            queryset = queryset.order_by(ordering)
-        else:
-            queryset = queryset.order_by('-created_at')
-
-        # Get statistics before pagination if requested
-        include_stats = request.query_params.get('include_stats', '').lower() in ('true', '1')
-        statistics = None
-        if include_stats:
-            statistics = self._get_filtered_statistics(queryset)
-
-        # Pagination
-        page = self.paginate_queryset(queryset)
-        if page is not None:
-            serializer = self.get_serializer(page, many=True)
-            result = self.get_paginated_response(serializer.data)
-
-            if statistics:
-                result.data['statistics'] = statistics
-
-            return result
-
-        # Non-paginated response
-        serializer = self.get_serializer(queryset, many=True)
-        response_data = {
-            'success': True,
-            'data': serializer.data,
-            'count': queryset.count()
-        }
-
-        if statistics:
-            response_data['statistics'] = statistics
-
-        return Response(response_data)
-
-    @swagger_auto_schema(
-        method='get',
-        manual_parameters=[
-            openapi.Parameter('type_id', openapi.IN_QUERY, description="News type ID", type=openapi.TYPE_INTEGER),
-            openapi.Parameter('limit', openapi.IN_QUERY, description="Number of articles to return",
-                              type=openapi.TYPE_INTEGER),
-        ],
-        responses={200: NewsSerializer(many=True)},
-        operation_description="Get news by type (Public Access)",
-        tags=['News Articles']
-    )
-    @action(detail=False, methods=['get'], url_path='by-type')
-    def news_by_type(self, request):
-        """Get news filtered by type - Public access"""
-        type_id = request.query_params.get('type_id')
-        limit = int(request.query_params.get('limit', 20))
-
-        if not type_id:
+        except Exception as e:
+            logger.error(f"Error creating news article: {str(e)}")
             return Response({
                 'success': False,
-                'error': 'type_id parameter is required'
-            }, status=status.HTTP_400_BAD_REQUEST)
+                'error': 'An error occurred while creating the news article'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @swagger_auto_schema(
+        request_body=NewsSerializer,
+        manual_parameters=[
+            openapi.Parameter('images', openapi.IN_FORM, description="Multiple image files",
+                              type=openapi.TYPE_ARRAY, items=openapi.Items(type=openapi.TYPE_FILE),
+                              required=False),
+        ],
+        responses={200: NewsSerializer, 400: 'Bad Request'},
+        operation_description="Update news article with optional new images (Auth Required)",
+        tags=['News Articles']
+    )
+    def update(self, request, *args, **kwargs):
+        """Update news article with optional new images"""
+        instance = self.get_object()
+        form_data = {k: v for k, v in request.data.items() if k != 'images'}
 
         try:
-            news_type = NewsType.objects.get(id=type_id, is_active=True)
-            news_articles = news_type.news_articles.filter(status='published')[:limit]
+            with transaction.atomic():
+                # Update the news article
+                serializer = self.get_serializer(instance, data=form_data, partial=True)
+                if not serializer.is_valid():
+                    return Response({
+                        'success': False,
+                        'errors': serializer.errors
+                    }, status=status.HTTP_400_BAD_REQUEST)
 
-            serializer = self.get_serializer(news_articles, many=True)
-            return Response({
-                'success': True,
-                'type': NewsTypeSerializer(news_type).data,
-                'data': serializer.data,
-                'count': len(news_articles)
-            })
+                news_instance = serializer.save()
 
-        except NewsType.DoesNotExist:
+                # Handle new image uploads if provided
+                created_images = []
+                image_errors = []
+                if 'images' in request.FILES:
+                    created_images, image_errors = self.handle_image_uploads(news_instance, request)
+
+                response_data = {
+                    'success': True,
+                    'message': 'News article updated successfully',
+                    'data': NewsSerializer(news_instance, context={'request': request}).data
+                }
+
+                if created_images:
+                    response_data['new_images_uploaded'] = len(created_images)
+
+                if image_errors:
+                    response_data['image_errors'] = image_errors
+
+                return Response(response_data, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            logger.error(f"Error updating news article: {str(e)}")
             return Response({
                 'success': False,
-                'error': 'News type not found or inactive'
-            }, status=status.HTTP_404_NOT_FOUND)
+                'error': 'An error occurred while updating the news article'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    def destroy(self, request, *args, **kwargs):
+        """Delete news article with all associated images (Auth Required)"""
+        instance = self.get_object()
+
+        try:
+            with transaction.atomic():
+                # Delete associated images
+                deleted_files, errors = self.handle_image_deletion(instance)
+
+                # Store title for logging
+                title = instance.title
+
+                # Delete the news article
+                instance.delete()
+
+                response_data = {
+                    'success': True,
+                    'message': 'News article and associated images deleted successfully'
+                }
+
+                if deleted_files:
+                    response_data['deleted_images_count'] = len(deleted_files)
+
+                if errors:
+                    response_data['warnings'] = errors
+
+                logger.info(f"News article deleted: {title}")
+                return Response(response_data, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            logger.error(f"Error deleting news article: {str(e)}")
+            return Response({
+                'success': False,
+                'error': 'An error occurred while deleting the news article'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    # ============ PUBLIC GET ENDPOINTS (No Auth Required) ============
 
     @swagger_auto_schema(
-        method='post',
-        responses={200: 'Success'},
-        operation_description="Increment view count for news article (Public Access)",
-        tags=['News Articles']
-    )
-    @action(detail=True, methods=['post'], url_path='view')
-    def increment_views(self, request, pk=None):
-        """Increment view count - Public access"""
-        news_article = self.get_object()
-        news_article.views_count += 1
-        news_article.save(update_fields=['views_count'])
-
-        return Response({
-            'success': True,
-            'views_count': news_article.views_count
-        })
-
-    @swagger_auto_schema(
-        method='get',
-        responses={200: openapi.Response(description="News statistics")},
-        operation_description="Get comprehensive news statistics (Public Access)",
-        tags=['News Articles']
-    )
-    @action(detail=False, methods=['get'], url_path='stats')
-    def news_stats(self, request):
-        """Get news statistics - Public access"""
-        from django.db.models import Count, Sum, Avg
-
-        now = timezone.now()
-        last_week = now - timedelta(days=7)
-        last_month = now - timedelta(days=30)
-
-        # Only count published news for public stats
-        total_news = News.objects.filter(status='published').count()
-        featured_news = News.objects.filter(is_featured=True, status='published').count()
-
-        # Recent activity
-        recent_stats = {
-            'this_week': News.objects.filter(created_at__gte=last_week, status='published').count(),
-            'this_month': News.objects.filter(created_at__gte=last_month, status='published').count(),
-        }
-
-        # Popular news (top 5 by views)
-        popular_news = News.objects.filter(status='published').order_by('-views_count')[:5]
-        popular_serializer = NewsSerializer(popular_news, many=True, context={'request': request})
-
-        # News by type (only published)
-        type_stats = list(
-            NewsType.objects.annotate(
-                published_count=Count('news_articles', filter=models.Q(news_articles__status='published'))
-            ).values('id', 'name', 'published_count').filter(published_count__gt=0)
-        )
-
-        return Response({
-            'success': True,
-            'data': {
-                'totals': {
-                    'published_news': total_news,
-                    'featured_news': featured_news,
-                },
-                'recent_activity': recent_stats,
-                'popular_news': popular_serializer.data,
-                'by_type': type_stats,
-                'total_views': News.objects.filter(status='published').aggregate(Sum('views_count'))['views_count__sum'] or 0,
-                'avg_views': News.objects.filter(status='published').aggregate(Avg('views_count'))['views_count__avg'] or 0,
-            }
-        })
-
-    @swagger_auto_schema(
-        method='get',
         manual_parameters=[
-            openapi.Parameter('days', openapi.IN_QUERY, description="Number of days to look back",
-                              type=openapi.TYPE_INTEGER, default=7),
+            openapi.Parameter('news_type_id', openapi.IN_QUERY,
+                              description="Filter by news type ID (UUID format)",
+                              type=openapi.TYPE_STRING, required=False),
+            openapi.Parameter('search', openapi.IN_QUERY,
+                              description="Search in title and content",
+                              type=openapi.TYPE_STRING, required=False),
+            openapi.Parameter('page', openapi.IN_QUERY,
+                              description="Page number",
+                              type=openapi.TYPE_INTEGER, required=False),
+            openapi.Parameter('page_size', openapi.IN_QUERY,
+                              description="Number of results per page (max 100)",
+                              type=openapi.TYPE_INTEGER, required=False),
         ],
         responses={200: NewsSerializer(many=True)},
-        operation_description="Get recent news articles (Public Access)",
+        operation_description="Get paginated news articles with filtering options (Public Access)",
         tags=['News Articles']
     )
-    @action(detail=False, methods=['get'], url_path='recent')
+    def list(self, request, *args, **kwargs):
+        """List all news articles with pagination and filtering (Public Access)"""
+        try:
+            queryset = self.get_queryset()
+
+            # Filter by news_type_id
+            news_type_id = request.query_params.get('news_type_id')
+            if news_type_id:
+                try:
+                    # Validate UUID format
+                    uuid.UUID(news_type_id)
+                    queryset = queryset.filter(news_type_id=news_type_id)
+                except ValueError:
+                    return Response({
+                        'success': False,
+                        'error': 'Invalid news_type_id format. Must be a valid UUID.'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+
+            # Search functionality
+            search = request.query_params.get('search')
+            if search:
+                queryset = queryset.filter(
+                    Q(title__icontains=search) |
+                    Q(content__icontains=search)
+                )
+
+            # Default ordering
+            queryset = queryset.order_by('-created_at')
+
+            # Apply pagination
+            page = self.paginate_queryset(queryset)
+            if page is not None:
+                serializer = self.get_serializer(page, many=True)
+                paginated_response = self.get_paginated_response(serializer.data)
+
+                # Add filter information to response
+                filters_applied = {}
+                if news_type_id:
+                    filters_applied['news_type_id'] = news_type_id
+                if search:
+                    filters_applied['search'] = search
+
+                if filters_applied:
+                    paginated_response.data['filters_applied'] = filters_applied
+
+                return paginated_response
+
+            # Fallback if pagination is disabled
+            serializer = self.get_serializer(queryset, many=True)
+            return Response({
+                'success': True,
+                'count': len(serializer.data),
+                'data': serializer.data
+            })
+
+        except Exception as e:
+            logger.error(f"Error fetching news list: {str(e)}")
+            return Response({
+                'success': False,
+                'error': 'Unable to fetch news articles'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @swagger_auto_schema(
+        responses={200: NewsSerializer},
+        operation_description="Get single news article (Public Access)",
+        tags=['News Articles']
+    )
+    def retrieve(self, request, *args, **kwargs):
+        """Get single news article (Public Access)"""
+        try:
+            instance = self.get_object()
+            serializer = self.get_serializer(instance)
+            return Response({
+                'success': True,
+                'data': serializer.data
+            })
+        except Exception as e:
+            logger.error(f"Error fetching news article: {str(e)}")
+            return Response({
+                'success': False,
+                'error': 'News article not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+
+
+
+    @swagger_auto_schema(
+        manual_parameters=[
+            openapi.Parameter('news_type_id', openapi.IN_QUERY,
+                              description="Filter by news type ID (UUID format)",
+                              type=openapi.TYPE_STRING, required=False),
+            openapi.Parameter('search', openapi.IN_QUERY,
+                              description="Search in title and content",
+                              type=openapi.TYPE_STRING, required=False),
+            openapi.Parameter('page', openapi.IN_QUERY,
+                              description="Page number",
+                              type=openapi.TYPE_INTEGER, required=False),
+            openapi.Parameter('page_size', openapi.IN_QUERY,
+                              description="Number of results per page (max 100)",
+                              type=openapi.TYPE_INTEGER, required=False),
+        ],
+        responses={200: NewsSerializer(many=True)},
+        operation_description="GET for user",
+        tags=['News Articles']
+    )
+    @action(detail=False, methods=['get'], url_path='userget')
     def recent_news(self, request):
-        """Get recent news - Public access"""
-        days = int(request.query_params.get('days', 7))
-        since_date = timezone.now() - timedelta(days=days)
+        try:
+            queryset = self.get_queryset()
 
-        recent = News.objects.filter(
-            status='published',
-            published_at__gte=since_date
-        ).select_related('news_type').prefetch_related('images')[:20]
+            # Filter by news_type_id
+            news_type_id = request.query_params.get('news_type_id')
+            if news_type_id:
+                try:
+                    # Validate UUID format
+                    uuid.UUID(news_type_id)
+                    queryset = queryset.filter(news_type_id=news_type_id)
+                except ValueError:
+                    return Response({
+                        'success': False,
+                        'error': 'Invalid news_type_id format. Must be a valid UUID.'
+                    }, status=status.HTTP_400_BAD_REQUEST)
 
-        serializer = self.get_serializer(recent, many=True)
-        return Response({
-            'success': True,
-            'data': serializer.data,
-            'count': len(recent),
-            'period': f'Last {days} days'
-        })
+            # Search functionality
+            search = request.query_params.get('search')
+            if search:
+                queryset = queryset.filter(
+                    Q(title__icontains=search) |
+                    Q(content__icontains=search)
+                )
+
+            # Default ordering
+            queryset = queryset.order_by('-created_at')
+
+            # Apply pagination
+            page = self.paginate_queryset(queryset)
+            if page is not None:
+                serializer = self.get_serializer(page, many=True)
+                paginated_response = self.get_paginated_response(serializer.data)
+
+                # Add filter information to response
+                filters_applied = {}
+                if news_type_id:
+                    filters_applied['news_type_id'] = news_type_id
+                if search:
+                    filters_applied['search'] = search
+
+                if filters_applied:
+                    paginated_response.data['filters_applied'] = filters_applied
+
+                return paginated_response
+
+            # Fallback if pagination is disabled
+            serializer = self.get_serializer(queryset, many=True)
+            return Response({
+                'success': True,
+                'count': len(serializer.data),
+                'data': serializer.data
+            })
+
+        except Exception as e:
+            logger.error(f"Error fetching news list: {str(e)}")
+            return Response({
+                'success': False,
+                'error': 'Unable to fetch news articles'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class NewsImageViewSet(viewsets.ModelViewSet):
     """ViewSet for managing news images separately"""
@@ -3478,7 +3184,7 @@ class NewsImageViewSet(viewsets.ModelViewSet):
     permission_classes = [IsSuperUserPermission]
     parser_classes = [MultiPartParser, FormParser]
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
-    filterset_fields = ['news', 'image_type', 'is_active']
+    filterset_fields = ['news', 'is_active']
     ordering_fields = ['order', 'uploaded_at']
     ordering = ['order', 'uploaded_at']
 
@@ -3515,92 +3221,3 @@ class NewsImageViewSet(viewsets.ModelViewSet):
                 'success': False,
                 'error': f'Error deleting image: {str(e)}'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-    @swagger_auto_schema(
-        method='post',
-        manual_parameters=[
-            openapi.Parameter(
-                'image_ids',
-                openapi.IN_FORM,
-                description="Comma-separated list of image IDs to delete",
-                type=openapi.TYPE_STRING,
-                required=True
-            )
-        ],
-        responses={
-            200: openapi.Response(
-                description="Success",
-                schema=openapi.Schema(
-                    type=openapi.TYPE_OBJECT,
-                    properties={
-                        'success': openapi.Schema(type=openapi.TYPE_BOOLEAN),
-                        'message': openapi.Schema(type=openapi.TYPE_STRING),
-                        'deleted_count': openapi.Schema(type=openapi.TYPE_INTEGER),
-                        'errors': openapi.Schema(type=openapi.TYPE_ARRAY, items=openapi.Items(type=openapi.TYPE_STRING))
-                    }
-                )
-            ),
-            400: 'Bad Request'
-        },
-        operation_description="Bulk delete images by providing comma-separated image IDs",
-        tags=['News Images']
-    )
-    @action(detail=False, methods=['post'], url_path='bulk-delete')
-    def bulk_delete(self, request):
-        """Bulk delete images"""
-        # Handle both JSON and form data
-        if hasattr(request.data, 'get'):
-            # Form data or JSON
-            image_ids_input = request.data.get('image_ids', [])
-        else:
-            # Fallback
-            image_ids_input = []
-
-        # Handle different input formats
-        if isinstance(image_ids_input, str):
-            # Comma-separated string
-            try:
-                image_ids = [int(id.strip()) for id in image_ids_input.split(',') if id.strip()]
-            except ValueError:
-                return Response({
-                    'success': False,
-                    'error': 'Invalid image IDs format. Use comma-separated integers.'
-                }, status=status.HTTP_400_BAD_REQUEST)
-        elif isinstance(image_ids_input, list):
-            # Array of IDs
-            image_ids = image_ids_input
-        else:
-            image_ids = []
-
-        if not image_ids:
-            return Response({
-                'success': False,
-                'error': 'image_ids parameter is required'
-            }, status=status.HTTP_400_BAD_REQUEST)
-
-        deleted_count = 0
-        errors = []
-
-        with transaction.atomic():
-            for image_id in image_ids:
-                try:
-                    image = NewsImage.objects.get(id=image_id)
-
-                    # Delete physical file
-                    if image.image and default_storage.exists(image.image.name):
-                        default_storage.delete(image.image.name)
-
-                    image.delete()
-                    deleted_count += 1
-
-                except NewsImage.DoesNotExist:
-                    errors.append(f'Image {image_id} not found')
-                except Exception as e:
-                    errors.append(f'Error deleting image {image_id}: {str(e)}')
-
-        return Response({
-            'success': True,
-            'message': f'Successfully deleted {deleted_count} images',
-            'deleted_count': deleted_count,
-            'errors': errors if errors else None
-        })
