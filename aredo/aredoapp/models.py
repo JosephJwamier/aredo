@@ -1,5 +1,5 @@
 from django.conf import settings
-from django.core.validators import FileExtensionValidator
+import time
 from django.db import models
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 import uuid
@@ -87,27 +87,6 @@ class University(models.Model):
 class FormKind(models.Model):
     """Model to define different types of application forms"""
 
-    # Predefined form types
-    APPLICANT = 'applicant'
-    CANCEL_CODE = 'cancelcode'
-    TRANSLATE = 'translate'
-    LANGUAGE_COURSE = 'langcourse'
-    UNIVERSITY_FEES = 'universityfees'
-    PUBLISH_RESEARCH = 'publish'
-    DELVARY = 'delvary'
-    FLIGHT = 'flight'
-    TRANSLATE_IRAQ = 'translate iraq'
-    ISTALAL = 'istalal'
-    RAHGERY = 'rahgery'
-    HIGHER_EDUCATION = 'higher education'
-    FORM_TYPE_CHOICES = [
-        (APPLICANT, 'Applicant'),
-        (CANCEL_CODE, 'Cancel Code'),
-        (TRANSLATE, 'Translate'),
-        (LANGUAGE_COURSE, 'Language Course'),
-        (UNIVERSITY_FEES, 'University Fees'),
-        (PUBLISH_RESEARCH, 'Publish Research'),
-    ]
 
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -120,7 +99,7 @@ class FormKind(models.Model):
         max_length=100,
         help_text="Display name for the form type"
     )
-    phone = models.TextField(
+    phonefield = models.TextField(
         blank=True,
         help_text="Detailed description of what this form type is for"
     )
@@ -142,6 +121,64 @@ class FormKind(models.Model):
         help_text="Icon class or name for UI display"
     )
 
+    # spceify if the form need the field or not
+
+    university =models.BooleanField(default=False)
+
+    # Common required fields
+    full_name = models.BooleanField(default=False)
+    email = models.BooleanField(default=False)
+    phone = models.BooleanField(default=False)
+    notes = models.BooleanField(default=False)
+
+    # Common optional fields
+    department = models.BooleanField(default=False)
+    fees = models.BooleanField(default=False)
+
+    # Applicant-specific fields
+    degreenum = models.BooleanField(default=False)
+    passport = models.BooleanField(default=False)
+    degree = models.BooleanField(default=False)
+    deepdepartment = models.BooleanField(default=False)
+    grad_univerBach = models.BooleanField(default=False)
+    grad_univermaster =models.BooleanField(default=False)
+    traker = models.BooleanField(default=False)
+
+
+    pdf = models.BooleanField(default=False)
+
+    # Translate-specific fields
+    address = models.BooleanField(default=False)
+    nearestPoint = models.BooleanField(default=False)
+    govern = models.BooleanField(default=False)
+
+    # flight
+    by = models.BooleanField(default=False)
+
+    # Publish-specific fields
+    pages = models.BooleanField(default=False)
+    magazine = models.BooleanField(default=False)
+    mushref = models.BooleanField(default=False)
+    publishResearch = models.BooleanField(default=False)
+    stilal = models.BooleanField(default=False)
+    international = models.BooleanField(default=False)
+
+    # UniversityFees-specific fields
+    univerFees = models.BooleanField(default=False)
+    kind_fees = models.BooleanField(default=False)
+
+    # Status flags
+    touch = models.BooleanField(default=False)
+    submitted = models.BooleanField(default=False)
+    approved = models.BooleanField(default=False)
+    accepted = models.BooleanField(default=False)
+    received = models.BooleanField(default=False)
+    payoff = models.BooleanField(default=False)
+
+    # Timestamps
+    date_applied = models.BooleanField(default=False)
+    date = models.BooleanField(default=False)
+
 
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
@@ -155,77 +192,61 @@ class FormKind(models.Model):
     def __str__(self):
         return self.name
 
-    def get_required_fields(self):
-        """Return list of required fields for this form kind"""
-        required_fields_map = {
-            self.APPLICANT: [
-                'university', 'passport', 'degree', 'degreenum',
-                'traker', 'pdf', 'deepdepartment', 'grad_univerBach',
-                'grad_univermaster'
-            ],
-            self.CANCEL_CODE: [
-                'university', 'traker', 'pdf'
-            ],
-            self.TRANSLATE: [
-                'address', 'nearestPoint', 'govern'
-            ],
-            self.LANGUAGE_COURSE: [
-                'university', 'passport', 'traker', 'pdf'
-            ],
-            self.UNIVERSITY_FEES: [
-                'university', 'department', 'univerFees', 'kind_fees'
-            ],
-            self.PUBLISH_RESEARCH: [
-                'department', 'pages', 'magazine', 'mushref'
-            ],
+    def get_field_requirements_dict(self):
+        """Return a dictionary of field requirements"""
+        return {
+            'university': self.university,
+            'full_name': self.full_name,
+            'email': self.email,
+            'phone': self.phonefield,
+            'notes': self.notes,
+            'department': self.department,
+            'fees': self.fees,
+            'degreenum': self.degreenum,
+            'passport': self.passport,
+            'degree': self.degree,
+            'deepdepartment': self.deepdepartment,
+            'grad_univerBach': self.grad_univerBach,
+            'grad_univermaster': self.grad_univermaster,
+            'traker': self.traker,
+            'pdf': self.pdf,
+            'address': self.address,
+            'nearestPoint': self.nearestPoint,
+            'govern': self.govern,
+            'by': self.by,
+            'pages': self.pages,
+            'magazine': self.magazine,
+            'mushref': self.mushref,
+            'publishResearch': self.publishResearch,
+            'stilal': self.stilal,
+            'international': self.international,
+            'univerFees': self.univerFees,
+            'kind_fees': self.kind_fees,
+            'touch': self.touch,
+            'submitted': self.submitted,
+            'approved': self.approved,
+            'accepted': self.accepted,
+            'received': self.received,
+            'payoff': self.payoff,
+            'date_applied': self.date_applied,
+            'date': self.date,
         }
-        return required_fields_map.get(self.name, [])
+
+    def get_required_fields_list(self):
+        """Get list of required field names"""
+        requirements = self.get_field_requirements_dict()
+        return [field_name for field_name, is_required in requirements.items() if is_required]
+
+    def get_optional_fields_list(self):
+        """Get list of optional field names"""
+        requirements = self.get_field_requirements_dict()
+        return [field_name for field_name, is_required in requirements.items() if not is_required]
+
 
     @classmethod
     def get_active_kinds(cls):
         """Return queryset of active form kinds"""
         return cls.objects.filter(is_active=True)
-
-
-class FormKindField(models.Model):
-    """Model to define which fields are required/optional for each form kind"""
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    form_kind = models.ForeignKey(
-        FormKind,
-        on_delete=models.CASCADE,
-        related_name='required_fields'
-    )
-    field_name = models.CharField(
-        max_length=50,
-        help_text="Name of the field in ApplicationForm model"
-    )
-    is_required = models.BooleanField(
-        default=True,
-        help_text="Whether this field is required for this form kind"
-    )
-    display_name = models.CharField(
-        max_length=100,
-        blank=True,
-        help_text="Human-readable name for the field"
-    )
-    help_text = models.CharField(
-        max_length=255,
-        blank=True,
-        help_text="Help text to display for this field"
-    )
-    field_order = models.PositiveIntegerField(
-        default=0,
-        help_text="Order in which to display this field in forms"
-    )
-
-    class Meta:
-        unique_together = ['form_kind', 'field_name']
-        ordering = ['field_order', 'field_name']
-        verbose_name = 'Form Kind Field'
-        verbose_name_plural = 'Form Kind Fields'
-
-    def __str__(self):
-        return f"{self.form_kind.name} - {self.field_name}"
 
 
 class ApplicationForm(models.Model):
@@ -306,11 +327,18 @@ class ApplicationForm(models.Model):
     traker = models.CharField(max_length=255, blank=True)
 
     def upload_to(instance, filename):
-        """Construct upload path based on form kind and user"""
-        user_folder = instance.user.username if hasattr(instance.user, 'username') else str(instance.user.id)
+        """Construct upload path based on form kind, user, and timestamp"""
+        # Get user folder
+        user_folder = str(instance.user.id)
+        # Get kind folder
         kind_folder = instance.kind.name if instance.kind else 'other'
-        return f'uploads/{kind_folder}/{user_folder}/{filename}'
+        # Split name and extension
+        base, ext = os.path.splitext(filename)
+        # Add timestamp
+        timestamp = int(time.time())
+        new_filename = f"{base}_{timestamp}{ext}"
 
+        return f'uploads/{kind_folder}/{user_folder}/{new_filename}'
     pdf = models.FileField(upload_to=upload_to, blank=True, null=True)
 
     # Translate-specific fields
@@ -409,31 +437,7 @@ class ApplicationForm(models.Model):
     def __str__(self):
         return f"{self.full_name} ({self.kind.name})"
 
-    def clean(self):
-        """Validate form based on kind requirements"""
-        super().clean()
 
-        if not self.kind:
-            return
-
-        # Get required fields from the form kind
-        required_fields = self.kind.get_required_fields()
-
-        # Check for missing required fields
-        missing_fields = []
-        for field_name in required_fields:
-            field_value = getattr(self, field_name, None)
-            if not field_value:
-                missing_fields.append(field_name)
-
-        if missing_fields:
-            error_dict = {}
-            for field in missing_fields:
-                error_dict[field] = f"This field is required for {self.kind.name} applications"
-            raise ValidationError(error_dict)
-
-        # Additional validation based on form kind
-        self._validate_by_kind()
 
     def _validate_by_kind(self):
         """Perform kind-specific validation"""
@@ -474,29 +478,158 @@ class ApplicationForm(models.Model):
         """Check if form can still be edited"""
         return not (self.submitted or self.approved or self.accepted or self.received)
 
+
+
+    def clean(self):
+        """Enhanced validation based on form kind requirements"""
+        super().clean()
+
+        if not self.kind:
+            return
+
+        # Use the validation function from serializers
+        try:
+            from .serializers import validate_application_form_data
+            validate_application_form_data(self)
+        except ImportError:
+            # Fallback to basic validation if serializer is not available
+            self._basic_form_validation()
+
+    def _basic_form_validation(self):
+        """Basic validation when serializer validation is not available"""
+        if not self.kind.is_active:
+            raise ValidationError("This form type is currently not available")
+
+        # Get required fields from the form kind
+        required_fields = self.get_required_fields_from_kind()
+
+        # Check for missing required fields
+        missing_fields = []
+        for field_name in required_fields:
+            mapped_field = self.map_kind_field_to_form_field(field_name)
+            field_value = getattr(self, mapped_field, None)
+            if not field_value and field_value != 0 and field_value is not False:
+                missing_fields.append(mapped_field)
+
+        if missing_fields:
+            error_dict = {}
+            for field in missing_fields:
+                error_dict[field] = f"This field is required for {self.kind.manager} applications"
+            raise ValidationError(error_dict)
+
+    def get_required_fields_from_kind(self):
+        """Get required field names from the associated FormKind"""
+        if not self.kind:
+            return []
+
+        required_fields = []
+
+        # Map of FormKind boolean fields to their names
+        field_mappings = {
+            'university': self.kind.university,
+            'full_name': self.kind.full_name,
+            'email': self.kind.email,
+            'phone': self.kind.phone,
+            'notes': self.kind.notes,
+            'department': self.kind.department,
+            'fees': self.kind.fees,
+            'degreenum': self.kind.degreenum,
+            'passport': self.kind.passport,
+            'degree': self.kind.degree,
+            'deepdepartment': self.kind.deepdepartment,
+            'grad_univerBach': self.kind.grad_univerBach,
+            'grad_univermaster': self.kind.grad_univermaster,
+            'traker': self.kind.traker,
+            'pdf': self.kind.pdf,
+            'address': self.kind.address,
+            'nearestPoint': self.kind.nearestPoint,
+            'govern': self.kind.govern,
+            'by': self.kind.by,
+            'pages': self.kind.pages,
+            'magazine': self.kind.magazine,
+            'mushref': self.kind.mushref,
+            'publishResearch': self.kind.publishResearch,
+            'stilal': self.kind.stilal,
+            'international': self.kind.international,
+            'univerFees': self.kind.univerFees,
+            'kind_fees': self.kind.kind_fees,
+            'touch': self.kind.touch,
+            'submitted': self.kind.submitted,
+            'approved': self.kind.approved,
+            'accepted': self.kind.accepted,
+            'received': self.kind.received,
+            'payoff': self.kind.payoff,
+            'date_applied': self.kind.date_applied,
+            'date': self.kind.date,
+        }
+
+        for field_name, is_required in field_mappings.items():
+            if is_required:
+                required_fields.append(field_name)
+
+        return required_fields
+
+    def map_kind_field_to_form_field(self, kind_field_name):
+        """Map FormKind field names to ApplicationForm field names"""
+        field_mapping = {
+            'phone': 'phone',  # FormKind uses 'phonefield', ApplicationForm uses 'phone'
+        }
+        return field_mapping.get(kind_field_name, kind_field_name)
+
     def get_required_fields(self):
-        """Get required fields for this form's kind"""
-        if self.kind:
-            return self.kind.get_required_fields()
-        return []
+        """Get required fields for this form's kind - updated method"""
+        required_fields = self.get_required_fields_from_kind()
+        return [self.map_kind_field_to_form_field(field) for field in required_fields]
 
     def get_completion_percentage(self):
-        """Calculate form completion percentage"""
+        """Calculate form completion percentage based on kind requirements"""
         if not self.kind:
             return 0
 
-        required_fields = self.get_required_fields()
+        required_fields = self.get_required_fields_from_kind()
         if not required_fields:
             return 100
 
         completed_fields = 0
         for field_name in required_fields:
-            field_value = getattr(self, field_name, None)
-            if field_value:
+            mapped_field = self.map_kind_field_to_form_field(field_name)
+            field_value = getattr(self, mapped_field, None)
+
+            # Consider field completed if it has a value (including False for boolean fields)
+            if field_value or field_value is False:
                 completed_fields += 1
 
         return int((completed_fields / len(required_fields)) * 100)
 
+    def is_complete(self):
+        """Check if all required fields are completed"""
+        return self.get_completion_percentage() == 100
+
+    def get_missing_required_fields(self):
+        """Get list of missing required fields"""
+        if not self.kind:
+            return []
+
+        required_fields = self.get_required_fields_from_kind()
+        missing_fields = []
+
+        for field_name in required_fields:
+            mapped_field = self.map_kind_field_to_form_field(field_name)
+            field_value = getattr(self, mapped_field, None)
+            if not field_value and field_value != 0 and field_value is not False:
+                missing_fields.append(mapped_field)
+
+        return missing_fields
+
+    @property
+    def can_be_submitted(self):
+        """Check if form can be submitted (all required fields completed)"""
+        return self.is_complete() and self.is_editable
+
+    def save(self, *args, **kwargs):
+        """Override save to run validation"""
+        self.full_clean()  # This will call clean() method
+        super().save(*args, **kwargs)
 
 
 def upload_to_images(instance, filename):
