@@ -198,7 +198,7 @@ class FormKind(models.Model):
             'university': self.university,
             'full_name': self.full_name,
             'email': self.email,
-            'phone': self.phonefield,
+            'phone': self.phone,
             'notes': self.notes,
             'department': self.department,
             'fees': self.fees,

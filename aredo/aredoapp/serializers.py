@@ -279,26 +279,9 @@ class DynamicFormValidationMixin:
         # Get user-fillable field requirements (exclude system/status fields)
         user_field_requirements = self.get_user_field_requirements_from_kind(kind)
         required_fields = [field for field, is_required in user_field_requirements.items() if is_required]
-        allowed_fields = [field for field, is_required in user_field_requirements.items() if is_required]
 
-        # Add always allowed fields (system fields that are not part of form kind validation)
-        system_fields = ['kind', 'user', 'id', 'created_at', 'updated_at', 'date_applied', 'date']
-        allowed_fields.extend(system_fields)
-
-        # Map all allowed fields to their ApplicationForm equivalents
-        mapped_allowed_fields = [self.map_kind_field_to_form_field(field) for field in allowed_fields]
-        mapped_allowed_fields.extend(system_fields)  # Add system fields as-is
-
-        # Check for unrequired fields in the request
-        unrequired_fields = []
-        for field_name in attrs.keys():
-            if field_name not in mapped_allowed_fields:
-                unrequired_fields.append(field_name)
-
-        # Reject unrequired fields
-        if unrequired_fields:
-            for field_name in unrequired_fields:
-                errors[field_name] = f"This field is not allowed for {kind.manager} applications"
+        # NOTE: We no longer check for unrequired fields here
+        # That's handled in to_internal_value() which silently filters them out
 
         # Validate required fields
         for field_name in required_fields:
@@ -328,7 +311,7 @@ class DynamicFormValidationMixin:
     def get_user_field_requirements_from_kind(self, kind):
         """Extract user-fillable field requirements (exclude status/workflow fields) from FormKind instance"""
         # Map of user-fillable FormKind boolean fields to their requirement status
-        # Exclude status/workflow fields like touch, submitted, approved, etc.
+        # Status/workflow fields are included here but filtered out in to_internal_value
         user_field_mappings = {
             'university': kind.university,
             'full_name': kind.full_name,
@@ -356,16 +339,8 @@ class DynamicFormValidationMixin:
             'stilal': kind.stilal,
             'international': kind.international,
             'univerFees': kind.univerFees,
-            'touch': kind.touch,
             'kind_fees': kind.kind_fees,
-            'submitted': kind.submitted,
-            'approved': kind.approved,
-            'accepted': kind.accepted,
-            'received': kind.received,
-            'payoff': kind.payoff,
-            'date_applied': kind.date_applied,
             'date': kind.date,
-            # Note: Removed status fields (touch, submitted, approved, accepted, received, payoff, date_applied, date)
         }
 
         return user_field_mappings
@@ -485,7 +460,6 @@ class DynamicFormValidationMixin:
 
         return errors
 
-
 class ApplicationFormSerializer(DynamicFormValidationMixin, serializers.ModelSerializer):
     """Enhanced ApplicationForm serializer with dynamic validation and field filtering"""
 
@@ -494,23 +468,15 @@ class ApplicationFormSerializer(DynamicFormValidationMixin, serializers.ModelSer
     status_display = serializers.CharField(read_only=True)
     completion_percentage = serializers.SerializerMethodField()
     is_editable = serializers.BooleanField(read_only=True)
-    university_name = serializers.CharField(source='university.name', read_only=True)
-    required_fields = serializers.SerializerMethodField()
-    allowed_fields = serializers.SerializerMethodField()
+
+
 
     class Meta:
         model = ApplicationForm
         fields = '__all__'
-        extra_kwargs = {
-            'full_name': {'required': False},
-            'email': {'required': False},
-            'phone': {'required': False},
-            'notes': {'required': False},
-        }
         read_only_fields = [
             'user', 'date_applied', 'created_at', 'updated_at', 'status_display',
-            'completion_percentage', 'is_editable', 'kind_display', 'kind_name',
-            'university_name', 'required_fields', 'allowed_fields'
+            'completion_percentage', 'is_editable', 'kind_display', 'kind_name'
         ]
 
     def to_internal_value(self, data):
@@ -521,7 +487,7 @@ class ApplicationFormSerializer(DynamicFormValidationMixin, serializers.ModelSer
             try:
                 from .models import FormKind  # Import here to avoid circular imports
                 kind = FormKind.objects.get(id=data['kind'])
-            except (FormKind.DoesNotExist, ValueError):
+            except (FormKind.DoesNotExist, ValueError, TypeError):
                 # Let the regular validation handle this error
                 pass
         elif self.instance and self.instance.kind:
@@ -533,35 +499,23 @@ class ApplicationFormSerializer(DynamicFormValidationMixin, serializers.ModelSer
             allowed_form_fields = list(user_field_requirements.keys())
 
             # Add system fields that are always allowed
-            system_fields = ['kind', 'user', 'id', 'created_at', 'updated_at', 'date_applied', 'date']
+            system_fields = ['kind', 'user', 'id', 'created_at', 'updated_at', 'date_applied']
             allowed_form_fields.extend(system_fields)
 
-            # Map to ApplicationForm field names
-            mapped_allowed_fields = [self.map_kind_field_to_form_field(field) for field in allowed_form_fields]
-            mapped_allowed_fields.extend(system_fields)
+            # Map to ApplicationForm field names (use set for O(1) lookup)
+            mapped_allowed_fields = {self.map_kind_field_to_form_field(field) for field in allowed_form_fields}
 
-            # Filter out unrequired fields
-            filtered_data = {}
-            rejected_fields = []
-
-            for field_name, value in data.items():
-                if field_name in mapped_allowed_fields:
-                    filtered_data[field_name] = value
-                else:
-                    rejected_fields.append(field_name)
-
-            # If there are rejected fields, raise validation error immediately
-            if rejected_fields:
-                errors = {}
-                for field_name in rejected_fields:
-                    errors[field_name] = f"This field is not allowed for {kind.name} applications"
-                raise serializers.ValidationError(errors)
+            # Filter out unrequired fields SILENTLY (no error)
+            filtered_data = {
+                field_name: value
+                for field_name, value in data.items()
+                if field_name in mapped_allowed_fields
+            }
 
             # Use filtered data for validation
             data = filtered_data
 
         return super().to_internal_value(data)
-
     def get_completion_percentage(self, obj):
         """Get form completion percentage based on kind requirements"""
         if not obj.kind:
@@ -598,17 +552,43 @@ class ApplicationFormSerializer(DynamicFormValidationMixin, serializers.ModelSer
         user_requirements = self.get_user_field_requirements_from_kind(obj.kind)
         return [self.map_kind_field_to_form_field(field) for field in user_requirements.keys()]
 
-
     def validate(self, attrs):
         """Main validation method"""
-        # Call the dynamic validation (this now includes unrequired field checking)
-        attrs = self.validate_based_on_kind(attrs)
+        # Get the form kind
+        kind = attrs.get('kind') or (self.instance.kind if self.instance else None)
+
+        if kind:
+            # Get required fields for this form kind
+            required_fields = self.get_required_fields_from_kind(kind)
+
+            # Check for missing required fields
+            missing_fields = []
+            for field_name in required_fields:
+                mapped_field = self.map_kind_field_to_form_field(field_name)
+
+                # Check if field exists in attrs or instance (for partial updates)
+                field_value = attrs.get(mapped_field)
+                if field_value is None and self.instance:
+                    field_value = getattr(self.instance, mapped_field, None)
+
+                # Field is missing if it's None or empty string
+                if field_value is None or field_value == '':
+                    missing_fields.append(mapped_field)
+
+            # Raise error if required fields are missing
+            if missing_fields:
+                errors = {
+                    field: f"This field is required for {kind.name} applications"
+                    for field in missing_fields
+                }
+                raise serializers.ValidationError(errors)
+
+
 
         # Additional custom validations
         attrs = self.validate_email_format(attrs)
 
-        # Must return the validated attributes
-        return attrs  # This was missing!
+        return attrs
 
     def validate_email_format(self, attrs):
         """Validate email format if email is provided"""
@@ -629,13 +609,7 @@ class ApplicationFormPartialSerializer(DynamicFormValidationMixin, serializers.M
     class Meta:
         model = ApplicationForm
         fields = '__all__'
-        extra_kwargs = {
-            'full_name': {'required': False},
-            'email': {'required': False},
-            'phone': {'required': False},
-            'notes': {'required': False},
 
-        }
         read_only_fields = [
             'user', 'date_applied', 'created_at', 'updated_at'
         ]
@@ -659,12 +633,12 @@ class ApplicationFormPartialSerializer(DynamicFormValidationMixin, serializers.M
             allowed_form_fields = list(all_field_requirements.keys())
 
             # Add system fields that are always allowed
-            system_fields = ['kind', 'user', 'id', 'created_at', 'updated_at', 'date_applied', 'date']
+            system_fields = ['kind', 'user', 'id', 'created_at', 'updated_at', 'date_applied']
             allowed_form_fields.extend(system_fields)
 
             # Map to ApplicationForm field names
             mapped_allowed_fields = [self.map_kind_field_to_form_field(field) for field in allowed_form_fields]
-            mapped_allowed_fields.extend(system_fields)
+
 
             # Filter out unrequired fields
             filtered_data = {}
@@ -706,10 +680,9 @@ class ApplicationFormPartialSerializer(DynamicFormValidationMixin, serializers.M
                 # Still check for unrequired fields even in draft mode
                 all_field_requirements = self.get_all_field_requirements_from_kind(kind)
                 allowed_form_fields = list(all_field_requirements.keys())
-                system_fields = ['kind', 'user', 'id', 'created_at', 'updated_at', 'date_applied', 'date']
+                system_fields = ['kind', 'user', 'id', 'created_at', 'updated_at', 'date_applied']
                 allowed_form_fields.extend(system_fields)
                 mapped_allowed_fields = [self.map_kind_field_to_form_field(field) for field in allowed_form_fields]
-                mapped_allowed_fields.extend(system_fields)
 
                 # Check for unrequired fields
                 unrequired_fields = []
@@ -725,32 +698,6 @@ class ApplicationFormPartialSerializer(DynamicFormValidationMixin, serializers.M
 
         return super().validate(attrs)
 
-
-
-def validate_application_form_data(form_instance):
-    """
-    Standalone function to validate ApplicationForm instance
-    Useful for model-level validation
-    """
-    if not form_instance.kind:
-        raise ValidationError("Form kind is required")
-
-    if not form_instance.kind.is_active:
-        raise ValidationError("This form type is currently not available")
-
-    # Create a temporary serializer instance for validation
-    serializer = ApplicationFormSerializer(instance=form_instance)
-
-    # Get all field values as a dict
-    data = {}
-    for field in form_instance._meta.fields:
-        data[field.name] = getattr(form_instance, field.name)
-
-    try:
-        serializer.validate_based_on_kind(data)
-    except serializers.ValidationError as e:
-        # Convert DRF validation error to Django validation error
-        raise ValidationError(e.detail)
 
 
 
