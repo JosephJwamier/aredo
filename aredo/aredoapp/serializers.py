@@ -404,7 +404,7 @@ class DynamicFormValidationMixin:
     def map_kind_field_to_form_field(self, kind_field_name):
         """Map FormKind field names to ApplicationForm field names"""
         field_mapping = {
-            'phonefield': 'phone',  # FormKind uses 'phonefield', ApplicationForm uses 'phone'
+            'phone': 'phone',  # FormKind uses 'phonefield', ApplicationForm uses 'phone'
         }
 
         return field_mapping.get(kind_field_name, kind_field_name)

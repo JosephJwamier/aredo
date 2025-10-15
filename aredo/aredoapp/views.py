@@ -10,9 +10,9 @@ from rest_framework.filters import SearchFilter, OrderingFilter
 from .filters import *
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.tokens import RefreshToken
-from rest_framework import filters
-from django.utils import timezone
+
 from rest_framework.permissions import IsAdminUser, IsAuthenticated
+from django_filters import rest_framework as filters
 
 import logging
 from .serializers import *
@@ -202,187 +202,325 @@ class CustomResponseMixin:
             "data": None
         }, status=status_code)
 
+class IsStaffUser(permissions.BasePermission):
+    """Custom permission to check if user is staff"""
+    def has_permission(self, request, view):
+        return request.user and request.user.is_authenticated and request.user.is_staff
 
-class CountryListCreateView(CustomErrorMixin,generics.ListCreateAPIView):
+
+class CountryListCreateView(CustomErrorMixin, generics.ListCreateAPIView):
     queryset = Country.objects.all()
     serializer_class = CountrySerializer
     pagination_class = CustomPageNumberPagination
 
-    def list(self, request, *args, **kwargs):
-        # Get the default response from parent class
-        response = super().list(request, *args, **kwargs)
+    def get_permissions(self):
+        """Allow anyone to list, only staff can create"""
+        if self.request.method in permissions.SAFE_METHODS:
+            return [permissions.AllowAny()]
+        return [IsStaffUser()]
 
-        # Wrap in custom format
+    def list(self, request, *args, **kwargs):
+        response = super().list(request, *args, **kwargs)
         custom_response = {
             "success": True,
             "message": "Countries retrieved successfully",
             "data": response.data
         }
-
         return Response(custom_response, status=status.HTTP_200_OK)
 
     def create(self, request, *args, **kwargs):
-        # Get the default response from parent class
         response = super().create(request, *args, **kwargs)
-
-        # Wrap in custom format
         custom_response = {
             "success": True,
             "message": "Country created successfully",
             "data": response.data
         }
-
         return Response(custom_response, status=response.status_code)
 
 
-class CountryRetrieveUpdateDestroyView(CustomErrorMixin,generics.RetrieveUpdateDestroyAPIView):
+class CountryRetrieveUpdateDestroyView(CustomErrorMixin, generics.RetrieveUpdateDestroyAPIView):
     queryset = Country.objects.all()
     serializer_class = CountrySerializer
-    permission_classes = [IsAdminUser]
+
+    def get_permissions(self):
+        """Allow anyone to retrieve, only staff can update/delete"""
+        if self.request.method in permissions.SAFE_METHODS:
+            return [permissions.AllowAny()]
+        return [IsStaffUser()]
 
     def retrieve(self, request, *args, **kwargs):
-        # Get the default response from parent class
         response = super().retrieve(request, *args, **kwargs)
-
-        # Wrap in custom format
         custom_response = {
             "success": True,
             "message": "Country retrieved successfully",
             "data": response.data
         }
-
         return Response(custom_response, status=status.HTTP_200_OK)
 
     def update(self, request, *args, **kwargs):
-        # Get the default response from parent class
         response = super().update(request, *args, **kwargs)
-
-        # Wrap in custom format
         custom_response = {
             "success": True,
             "message": "Country updated successfully",
             "data": response.data
         }
-
         return Response(custom_response, status=response.status_code)
 
     def partial_update(self, request, *args, **kwargs):
-        # Get the default response from parent class
         response = super().partial_update(request, *args, **kwargs)
-
-        # Wrap in custom format
         custom_response = {
             "success": True,
             "message": "Country updated successfully",
             "data": response.data
         }
-
         return Response(custom_response, status=response.status_code)
 
     def destroy(self, request, *args, **kwargs):
-        # Get the default response from parent class
         super().destroy(request, *args, **kwargs)
-
-        # Wrap in custom format
         custom_response = {
             "success": True,
             "message": "Country deleted successfully",
             "data": None
         }
-
         return Response(custom_response, status=status.HTTP_200_OK)
 
+class UniversityFilter(filters.FilterSet):
+    """Filter universities by country, name, and type"""
+    country_id = filters.UUIDFilter(field_name='country__id', lookup_expr='exact')
+    name = filters.CharFilter(field_name='name', lookup_expr='icontains')
+    university_type = filters.CharFilter(field_name='university_type', lookup_expr='exact')
 
-class UniversityViewSet(CustomErrorMixin,viewsets.ModelViewSet):
-    queryset = University.objects.all()
+    class Meta:
+        model = University
+        fields = ['name', 'university_type', 'country_id']
+
+
+class UniversityViewSet(CustomErrorMixin, viewsets.ModelViewSet):
+    queryset = University.objects.select_related('country')
     serializer_class = UniversitySerializer
     pagination_class = CustomPageNumberPagination
     parser_classes = [MultiPartParser, FormParser]
+    filter_backends = [filters.DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_class = UniversityFilter
+    search_fields = ['name', 'country__name']
+    ordering_fields = ['name', 'created_at']
+    ordering = ['name']
+    lookup_field = 'id'
+    lookup_value_regex = '[0-9a-f-]+'  # UUID regex pattern
 
     def get_permissions(self):
+        """Allow anyone to view, only staff or admin users can create/update/delete"""
         if self.request.method in permissions.SAFE_METHODS:
-            return [permissions.AllowAny()]  # Anyone can view
-        return [permissions.IsAdminUser()]  # Only admin can add/delete/edit
+            return [permissions.AllowAny()]
+        return [IsStaffUser()]
 
+    @swagger_auto_schema(
+        operation_description="List universities with filtering and search",
+        manual_parameters=[
+            openapi.Parameter(
+                'search',
+                openapi.IN_QUERY,
+                description="Search in university name and country name",
+                type=openapi.TYPE_STRING
+            ),
+            openapi.Parameter(
+                'name',
+                openapi.IN_QUERY,
+                description="Filter by university name (partial match)",
+                type=openapi.TYPE_STRING
+            ),
+            openapi.Parameter(
+                'university_type',
+                openapi.IN_QUERY,
+                description="Filter by university type (exact match)",
+                type=openapi.TYPE_STRING
+            ),
+            openapi.Parameter(
+                'country_id',
+                openapi.IN_QUERY,
+                description="Filter by country ID (UUID)",
+                type=openapi.TYPE_STRING,
+                format=openapi.FORMAT_UUID
+            ),
+            openapi.Parameter(
+                'ordering',
+                openapi.IN_QUERY,
+                description="Order by fields: name, created_at (use - for descending)",
+                type=openapi.TYPE_STRING
+            ),
+        ]
+    )
     def list(self, request, *args, **kwargs):
-        # Get the default response from parent class
-        response = super().list(request, *args, **kwargs)
+        """List universities with filtering and search"""
+        try:
+            response = super().list(request, *args, **kwargs)
+            custom_response = {
+                "success": True,
+                "message": "Universities retrieved successfully",
+                "data": response.data
+            }
+            return Response(custom_response, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({
+                'success': False,
+                'message': 'Failed to retrieve universities',
+                'errors': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-        # Wrap in custom format
-        custom_response = {
-            "success": True,
-            "message": "Universities retrieved successfully",
-            "data": response.data
-        }
-
-        return Response(custom_response, status=status.HTTP_200_OK)
-
+    @swagger_auto_schema(
+        operation_description="Retrieve a specific university by ID"
+    )
     def retrieve(self, request, *args, **kwargs):
-        # Get the default response from parent class
-        response = super().retrieve(request, *args, **kwargs)
+        """Retrieve a specific university"""
+        try:
+            response = super().retrieve(request, *args, **kwargs)
+            custom_response = {
+                "success": True,
+                "message": "University retrieved successfully",
+                "data": response.data
+            }
+            return Response(custom_response, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({
+                'success': False,
+                'message': 'Failed to retrieve university',
+                'errors': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-        # Wrap in custom format
-        custom_response = {
-            "success": True,
-            "message": "University retrieved successfully",
-            "data": response.data
+    @swagger_auto_schema(
+        operation_description="Create a new university",
+        request_body=UniversitySerializer,
+        responses={
+            201: openapi.Response(
+                description="University created successfully",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'success': openapi.Schema(type=openapi.TYPE_BOOLEAN),
+                        'message': openapi.Schema(type=openapi.TYPE_STRING),
+                        'data': openapi.Schema(type=openapi.TYPE_OBJECT),
+                    }
+                )
+            )
         }
-
-        return Response(custom_response, status=status.HTTP_200_OK)
-
+    )
     def create(self, request, *args, **kwargs):
-        # Get the default response from parent class
-        response = super().create(request, *args, **kwargs)
+        """Create a new university"""
+        try:
+            response = super().create(request, *args, **kwargs)
+            custom_response = {
+                "success": True,
+                "message": "University created successfully",
+                "data": response.data
+            }
+            return Response(custom_response, status=response.status_code)
+        except Exception as e:
+            return Response({
+                'success': False,
+                'message': 'Failed to create university',
+                'errors': str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)
 
-        # Wrap in custom format
-        custom_response = {
-            "success": True,
-            "message": "University created successfully",
-            "data": response.data
+    @swagger_auto_schema(
+        operation_description="Update an entire university record",
+        request_body=UniversitySerializer,
+        responses={
+            200: openapi.Response(
+                description="University updated successfully",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'success': openapi.Schema(type=openapi.TYPE_BOOLEAN),
+                        'message': openapi.Schema(type=openapi.TYPE_STRING),
+                        'data': openapi.Schema(type=openapi.TYPE_OBJECT),
+                    }
+                )
+            )
         }
-
-        return Response(custom_response, status=response.status_code)
-
+    )
     def update(self, request, *args, **kwargs):
-        # Get the default response from parent class
-        response = super().update(request, *args, **kwargs)
+        """Update an entire university record"""
+        try:
+            response = super().update(request, *args, **kwargs)
+            custom_response = {
+                "success": True,
+                "message": "University updated successfully",
+                "data": response.data
+            }
+            return Response(custom_response, status=response.status_code)
+        except Exception as e:
+            return Response({
+                'success': False,
+                'message': 'Failed to update university',
+                'errors': str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)
 
-        # Wrap in custom format
-        custom_response = {
-            "success": True,
-            "message": "University updated successfully",
-            "data": response.data
+    @swagger_auto_schema(
+        operation_description="Partially update a university record",
+        request_body=UniversitySerializer,
+        responses={
+            200: openapi.Response(
+                description="University updated successfully",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'success': openapi.Schema(type=openapi.TYPE_BOOLEAN),
+                        'message': openapi.Schema(type=openapi.TYPE_STRING),
+                        'data': openapi.Schema(type=openapi.TYPE_OBJECT),
+                    }
+                )
+            )
         }
-
-        return Response(custom_response, status=response.status_code)
-
+    )
     def partial_update(self, request, *args, **kwargs):
-        # Get the default response from parent class
-        response = super().partial_update(request, *args, **kwargs)
+        """Partially update a university record"""
+        try:
+            response = super().partial_update(request, *args, **kwargs)
+            custom_response = {
+                "success": True,
+                "message": "University updated successfully",
+                "data": response.data
+            }
+            return Response(custom_response, status=response.status_code)
+        except Exception as e:
+            return Response({
+                'success': False,
+                'message': 'Failed to update university',
+                'errors': str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)
 
-        # Wrap in custom format
-        custom_response = {
-            "success": True,
-            "message": "University updated successfully",
-            "data": response.data
+    @swagger_auto_schema(
+        operation_description="Delete a university",
+        responses={
+            200: openapi.Response(
+                description="University deleted successfully",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'success': openapi.Schema(type=openapi.TYPE_BOOLEAN),
+                        'message': openapi.Schema(type=openapi.TYPE_STRING),
+                        'data': openapi.Schema(type=openapi.TYPE_STRING, format='null'),
+                    }
+                )
+            )
         }
-
-        return Response(custom_response, status=response.status_code)
-
+    )
     def destroy(self, request, *args, **kwargs):
-        # Get the default response from parent class
-        super().destroy(request, *args, **kwargs)
-
-        # Wrap in custom format
-        custom_response = {
-            "success": True,
-            "message": "University deleted successfully",
-            "data": None
-        }
-
-        return Response(custom_response, status=status.HTTP_200_OK)
-
-
+        """Delete a university"""
+        try:
+            super().destroy(request, *args, **kwargs)
+            custom_response = {
+                "success": True,
+                "message": "University deleted successfully",
+                "data": None
+            }
+            return Response(custom_response, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({
+                'success': False,
+                'message': 'Failed to delete university',
+                'errors': str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)
 
 class MyTokenObtainPairView(TokenObtainPairView):
     serializer_class = MyTokenObtainPairSerializer
@@ -1396,7 +1534,7 @@ class NewsTypeViewSet(viewsets.ModelViewSet):
     queryset = NewsType.objects.all()
     serializer_class = NewsTypeSerializer
     permission_classes = [IsSuperUserPermission]  # Default for non-GET methods
-    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [DjangoFilterBackend, SearchFilter, filters.OrderingFilter]
     search_fields = ['name', 'description']
     ordering_fields = ['name', 'created_at']
     ordering = ['name']
