@@ -309,9 +309,8 @@ class DynamicFormValidationMixin:
         return attrs
 
     def get_user_field_requirements_from_kind(self, kind):
-        """Extract user-fillable field requirements (exclude status/workflow fields) from FormKind instance"""
-        # Map of user-fillable FormKind boolean fields to their requirement status
-        # Status/workflow fields are included here but filtered out in to_internal_value
+        """Extract ALL field requirements INCLUDING status fields from FormKind instance"""
+        # Map of ALL FormKind boolean fields to their requirement status
         user_field_mappings = {
             'university': kind.university,
             'full_name': kind.full_name,
@@ -341,6 +340,14 @@ class DynamicFormValidationMixin:
             'univerFees': kind.univerFees,
             'kind_fees': kind.kind_fees,
             'date': kind.date,
+            # STATUS FIELDS - NOW INCLUDED
+            'touch': kind.touch,
+            'submitted': kind.submitted,
+            'approved': kind.approved,
+            'accepted': kind.accepted,
+            'received': kind.received,
+            'payoff': kind.payoff,
+            'date_applied': kind.date_applied,
         }
 
         return user_field_mappings
