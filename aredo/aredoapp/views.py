@@ -1533,8 +1533,8 @@ class NewsTypeViewSet(viewsets.ModelViewSet):
     """ViewSet for managing news types/categories"""
     queryset = NewsType.objects.all()
     serializer_class = NewsTypeSerializer
-    permission_classes = [IsSuperUserPermission]  # Default for non-GET methods
-    filter_backends = [DjangoFilterBackend, SearchFilter, filters.OrderingFilter]
+    permission_classes = [IsSuperUserPermission,IsStaffUser]  # Default for non-GET methods
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     search_fields = ['name', 'description']
     ordering_fields = ['name', 'created_at']
     ordering = ['name']
@@ -1546,7 +1546,7 @@ class NewsTypeViewSet(viewsets.ModelViewSet):
         if self.request.method == 'GET':
             permission_classes = [AllowAny]
         else:
-            permission_classes = [IsSuperUserPermission]
+            permission_classes = [IsSuperUserPermission,IsStaffUser]
 
         return [permission() for permission in permission_classes]
 
@@ -2037,7 +2037,7 @@ class NewsImageViewSet(viewsets.ModelViewSet):
     serializer_class = NewsImageSerializer
     permission_classes = [IsSuperUserPermission]
     parser_classes = [MultiPartParser, FormParser]
-    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filter_backends = [DjangoFilterBackend, OrderingFilter]
     filterset_fields = ['news', 'is_active']
     ordering_fields = ['order', 'uploaded_at']
     ordering = ['order', 'uploaded_at']
