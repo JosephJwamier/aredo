@@ -308,6 +308,13 @@ class DynamicFormValidationMixin:
 
         return attrs
 
+    def is_admin_user(self):
+        """Check if the current user is an admin"""
+        request = self.context.get('request')
+        if request and hasattr(request, 'user'):
+            return request.user.is_staff or request.user.is_superuser
+        return False
+
     def get_user_field_requirements_from_kind(self, kind):
         """Extract ALL field requirements INCLUDING status fields from FormKind instance"""
         # Map of ALL FormKind boolean fields to their requirement status
@@ -340,14 +347,14 @@ class DynamicFormValidationMixin:
             'univerFees': kind.univerFees,
             'kind_fees': kind.kind_fees,
             'date': kind.date,
-            # STATUS FIELDS - NOW INCLUDED
-            'touch': kind.touch,
-            'submitted': kind.submitted,
-            'approved': kind.approved,
-            'accepted': kind.accepted,
-            'received': kind.received,
-            'payoff': kind.payoff,
-            'date_applied': kind.date_applied,
+            # STATUS FIELDS - Only include if user is admin
+            'touch': kind.touch if self.is_admin_user() else False,
+            'submitted': kind.submitted if self.is_admin_user() else False,
+            'approved': kind.approved if self.is_admin_user() else False,
+            'accepted': kind.accepted if self.is_admin_user() else False,
+            'received': kind.received if self.is_admin_user() else False,
+            'payoff': kind.payoff if self.is_admin_user() else False,
+            'date_applied': kind.date_applied ,
         }
 
         return user_field_mappings
@@ -476,8 +483,6 @@ class ApplicationFormSerializer(DynamicFormValidationMixin, serializers.ModelSer
     completion_percentage = serializers.SerializerMethodField()
     is_editable = serializers.BooleanField(read_only=True)
 
-
-
     class Meta:
         model = ApplicationForm
         fields = '__all__'
@@ -488,6 +493,12 @@ class ApplicationFormSerializer(DynamicFormValidationMixin, serializers.ModelSer
 
     def to_internal_value(self, data):
         """Override to filter out unrequired fields before validation"""
+        # Force status fields to False for non-admin users
+        if not self.is_admin_user():
+            status_fields = ['touch', 'submitted', 'approved', 'accepted', 'received', 'payoff']
+            for field in status_fields:
+                data[field] = False
+
         # Get the form kind from data or instance
         kind = None
         if 'kind' in data:
@@ -523,6 +534,7 @@ class ApplicationFormSerializer(DynamicFormValidationMixin, serializers.ModelSer
             data = filtered_data
 
         return super().to_internal_value(data)
+
     def get_completion_percentage(self, obj):
         """Get form completion percentage based on kind requirements"""
         if not obj.kind:
@@ -590,8 +602,6 @@ class ApplicationFormSerializer(DynamicFormValidationMixin, serializers.ModelSer
                 }
                 raise serializers.ValidationError(errors)
 
-
-
         # Additional custom validations
         attrs = self.validate_email_format(attrs)
 
@@ -607,7 +617,6 @@ class ApplicationFormSerializer(DynamicFormValidationMixin, serializers.ModelSer
             if not re.match(email_pattern, email):
                 raise serializers.ValidationError({'email': 'Enter a valid email address.'})
 
-        # Don't forget to return attrs here too if you're modifying them
         return attrs
 
 class ApplicationFormPartialSerializer(DynamicFormValidationMixin, serializers.ModelSerializer):

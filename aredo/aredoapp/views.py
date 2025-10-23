@@ -792,12 +792,6 @@ class ApplicantViewSet(CustomErrorMixin, viewsets.ModelViewSet):
             instance = self.get_object()
 
             # Check if the form is editable
-            if not instance.is_editable:
-                return Response({
-                    'success': False,
-                    'message': 'This application form can no longer be edited.',
-                    'errors': {'form': ['Form is not editable']}
-                }, status=status.HTTP_403_FORBIDDEN)
 
 
 
@@ -947,16 +941,35 @@ class ApplicantViewSet(CustomErrorMixin, viewsets.ModelViewSet):
             return ApplicationFormWithImagesSerializer
         return self.serializer_class
 
+    # ===== SWAGGER DOCUMENTATION =====
     @swagger_auto_schema(
-        operation_description="List applications with filtering and search",
+        operation_description="List applications with advanced filtering, search, and pagination",
         manual_parameters=[
+            # PAGINATION
+            openapi.Parameter(
+                'page',
+                openapi.IN_QUERY,
+                description="Page number (starts at 1)",
+                type=openapi.TYPE_INTEGER,
+                default=1
+            ),
+            openapi.Parameter(
+                'page_size',
+                openapi.IN_QUERY,
+                description="Number of results per page (default: 10, max: 100)",
+                type=openapi.TYPE_INTEGER,
+                default=10
+            ),
+
+            # SEARCH
             openapi.Parameter(
                 'search',
                 openapi.IN_QUERY,
-                description="Search in full_name, email, phone, department, university name, etc.",
+                description="Search in: full_name, email, phone, department, deepdepartment, university name, form kind, degree number, passport",
                 type=openapi.TYPE_STRING
             ),
 
+            # BOOLEAN FILTERS
             openapi.Parameter(
                 'submitted',
                 openapi.IN_QUERY,
@@ -976,21 +989,64 @@ class ApplicantViewSet(CustomErrorMixin, viewsets.ModelViewSet):
                 type=openapi.TYPE_BOOLEAN
             ),
             openapi.Parameter(
-                'kind__name',
+                'received',
                 openapi.IN_QUERY,
-                description="Filter by form kind name",
-                type=openapi.TYPE_STRING
+                description="Filter by received status (true/false)",
+                type=openapi.TYPE_BOOLEAN
             ),
             openapi.Parameter(
-                'university__name__icontains',
+                'payoff',
                 openapi.IN_QUERY,
-                description="Filter by university name (partial match)",
+                description="Filter by payoff status (true/false)",
+                type=openapi.TYPE_BOOLEAN
+            ),
+            openapi.Parameter(
+                'touch',
+                openapi.IN_QUERY,
+                description="Filter by touch status (true/false)",
+                type=openapi.TYPE_BOOLEAN
+            ),
+
+            # FORM KIND FILTERS
+            openapi.Parameter(
+                'kind',
+                openapi.IN_QUERY,
+                description="Filter by form kind (exact ID)",
+                type=openapi.TYPE_INTEGER
+            ),
+            openapi.Parameter(
+                'kind__name',
+                openapi.IN_QUERY,
+                description="Filter by form kind name (exact or partial match)",
                 type=openapi.TYPE_STRING
+            ),
+
+            # UNIVERSITY FILTERS
+            openapi.Parameter(
+                'university',
+                openapi.IN_QUERY,
+                description="Filter by university (exact ID)",
+                type=openapi.TYPE_INTEGER
+            ),
+            openapi.Parameter(
+                'university__name',
+                openapi.IN_QUERY,
+                description="Filter by university name (exact or partial match)",
+                type=openapi.TYPE_STRING
+            ),
+
+            # DATE FILTERS
+            openapi.Parameter(
+                'date_applied',
+                openapi.IN_QUERY,
+                description="Filter by exact application date (YYYY-MM-DD)",
+                type=openapi.TYPE_STRING,
+                format=openapi.FORMAT_DATE
             ),
             openapi.Parameter(
                 'date_applied__gte',
                 openapi.IN_QUERY,
-                description="Filter applications from this date (YYYY-MM-DD)",
+                description="Filter applications from this date onwards (YYYY-MM-DD)",
                 type=openapi.TYPE_STRING,
                 format=openapi.FORMAT_DATE
             ),
@@ -1002,15 +1058,58 @@ class ApplicantViewSet(CustomErrorMixin, viewsets.ModelViewSet):
                 format=openapi.FORMAT_DATE
             ),
             openapi.Parameter(
+                'date_applied__year',
+                openapi.IN_QUERY,
+                description="Filter by application year (e.g., 2024)",
+                type=openapi.TYPE_INTEGER
+            ),
+            openapi.Parameter(
+                'date_applied__month',
+                openapi.IN_QUERY,
+                description="Filter by application month (1-12)",
+                type=openapi.TYPE_INTEGER
+            ),
+
+            # FEE FILTERS
+            openapi.Parameter(
+                'fees',
+                openapi.IN_QUERY,
+                description="Filter by exact fee amount",
+                type=openapi.TYPE_NUMBER
+            ),
+            openapi.Parameter(
+                'fees__gte',
+                openapi.IN_QUERY,
+                description="Filter by minimum fee amount",
+                type=openapi.TYPE_NUMBER
+            ),
+            openapi.Parameter(
+                'fees__lte',
+                openapi.IN_QUERY,
+                description="Filter by maximum fee amount",
+                type=openapi.TYPE_NUMBER
+            ),
+
+            # ORDERING
+            openapi.Parameter(
                 'ordering',
                 openapi.IN_QUERY,
-                description="Order by fields: date_applied, full_name, email, status, fees (use - for descending)",
+                description="Order by field: date_applied, full_name, email, fees, updated_at (prefix - for descending, default: -date_applied)",
                 type=openapi.TYPE_STRING
             ),
         ]
     )
     def list(self, request, *args, **kwargs):
-        """List applications with filtering and search"""
+        """
+        List applications with advanced filtering, search, and pagination.
+
+        Examples:
+        - /api/applications/?page=1&page_size=20
+        - /api/applications/?search=john&approved=true
+        - /api/applications/?date_applied__gte=2024-01-01&date_applied__lte=2024-12-31
+        - /api/applications/?fees__gte=1000&fees__lte=5000&ordering=-fees
+        - /api/applications/?university__name__icontains=harvard&approved=true
+        """
         try:
             queryset = self.filter_queryset(self.get_queryset())
             page = self.paginate_queryset(queryset)
@@ -1022,7 +1121,7 @@ class ApplicantViewSet(CustomErrorMixin, viewsets.ModelViewSet):
                     'success': True,
                     'message': 'Applications retrieved successfully',
                     'data': paginated_response.data
-                })
+                }, status=status.HTTP_200_OK)
 
             serializer = self.get_serializer(queryset, many=True)
             return Response({
@@ -1032,7 +1131,8 @@ class ApplicantViewSet(CustomErrorMixin, viewsets.ModelViewSet):
                     'count': queryset.count(),
                     'results': serializer.data
                 }
-            })
+            }, status=status.HTTP_200_OK)
+
         except Exception as e:
             return Response({
                 'success': False,

@@ -43,7 +43,9 @@ class Country(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=100, unique=True)
     code = models.CharField(max_length=3, unique=True)  # e.g. "US", "KE", "UK"
-
+    class Meta:
+        ordering = ['name']  # Add default ordering
+        verbose_name_plural = 'Countries'
     def __str__(self):
         return self.name
 
@@ -78,6 +80,10 @@ class University(models.Model):
     )
     university_type = models.CharField(max_length=20, choices=UNIVERSITY_TYPES)
 
+
+    class Meta:
+        ordering = ['name']  # Add default ordering
+        verbose_name_plural = 'Universities'
     def __str__(self):
         return f"{self.name} - {self.country.name}"
 
@@ -425,7 +431,7 @@ class ApplicationForm(models.Model):
         return [img.image.url for img in self.images.all()]
 
     class Meta:
-        ordering = ['-date_applied']
+        ordering = ['-created_at']
         verbose_name = 'Application Form'
         verbose_name_plural = 'Application Forms'
         indexes = [
