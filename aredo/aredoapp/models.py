@@ -296,7 +296,7 @@ class ApplicationForm(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     kind = models.ForeignKey(
         FormKind,
-        on_delete=models.PROTECT,
+        on_delete=models.CASCADE,
         related_name='applications',
         help_text="Type of application form"
     )
@@ -369,11 +369,11 @@ class ApplicationForm(models.Model):
 
     # Status flags
     touch = models.BooleanField(default=False)
+    payoff = models.BooleanField(default=False)
+    received = models.BooleanField(default=False)
     submitted = models.BooleanField(default=False)
     approved = models.BooleanField(default=False)
     accepted = models.BooleanField(default=False)
-    received = models.BooleanField(default=False)
-    payoff = models.BooleanField(default=False)
 
     # Timestamps
     date_applied = models.DateTimeField(auto_now_add=True)
@@ -717,7 +717,7 @@ class NewsType(models.Model):
 
     def save(self, *args, **kwargs):
         if not self.slug:
-            self.slug = slugify(self.name)
+            self.slug = slugify(self.color)
         super().save(*args, **kwargs)
 
     @classmethod

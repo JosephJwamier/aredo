@@ -131,7 +131,7 @@ class NewsTypeSerializer(serializers.ModelSerializer):
         model = NewsType
         fields = ['id', 'name', 'slug', 'description', 'color', 'is_active',
                   'created_at', 'updated_at', 'news_count']
-        read_only_fields = ['slug', 'created_at', 'updated_at', 'news_count']
+        read_only_fields = [ 'created_at', 'updated_at', 'news_count']
 
     def get_news_count(self, obj):
         """Get count of news for this type - now works with ForeignKey"""
