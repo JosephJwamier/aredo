@@ -12,7 +12,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # SECURITY SETTINGS
 DEBUG = False
 SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-fallback-key-change-this')
-ALLOWED_HOSTS = ['aredo.org', 'www.aredo.org', '127.0.0.1',"api.aredo.org"]
+ALLOWED_HOSTS = ["api.aredo.org"]
 
 # Security Headers
 SECURE_SSL_REDIRECT = True
@@ -90,7 +90,7 @@ DATABASES = {
         'ENGINE': 'django.db.backends.mysql',
         'NAME': os.environ.get('DB_NAME', 'aredo'),
         'USER': os.environ.get('DB_USER', 'root'),
-        'PASSWORD': os.environ.get('DB_PASSWORD', 'MyStrongPassword123!'),
+        'PASSWORD': os.environ.get('DB_PASSWORD', '1234'),
         'HOST': os.environ.get('DB_HOST', 'localhost'),
         'PORT': os.environ.get('DB_PORT', '3306'),
         'CONN_MAX_AGE': 600,
