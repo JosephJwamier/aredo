@@ -12,7 +12,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # SECURITY SETTINGS
 DEBUG = False
 SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-fallback-key-change-this')
-ALLOWED_HOSTS = ["api.aredo.org"]
+ALLOWED_HOSTS = ['api.aredo.org','127.0.0.1', 'localhost']
 
 # Security Headers
 SECURE_SSL_REDIRECT = True
