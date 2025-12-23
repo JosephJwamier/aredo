@@ -95,11 +95,11 @@ WSGI_APPLICATION = 'aredo.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
-        'NAME': os.environ.get('DB_NAME', 'aredo'),
-        'USER': os.environ.get('DB_USER', 'root'),
-        'PASSWORD': os.environ.get('DB_PASSWORD', '1234'),
-        'HOST': os.environ.get('DB_HOST', 'localhost'),
-        'PORT': os.environ.get('DB_PORT', '3306'),
+        'NAME': 'aredo_db',
+        'USER': 'aredo_user',
+        'PASSWORD': 'YourStrongPassword123!',
+        'HOST': 'localhost',
+        'PORT': '3306',
         'CONN_MAX_AGE': 600,
         'OPTIONS': {
             'charset': 'utf8mb4',
