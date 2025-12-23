@@ -108,6 +108,7 @@ class FormKind(models.Model):
 
     description = models.CharField(
         max_length=400,
+        blank=True,
         help_text="Display description for the form type"
     )
     phonefield = models.TextField(

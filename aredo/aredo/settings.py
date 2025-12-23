@@ -10,9 +10,8 @@ from datetime import timedelta
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # SECURITY SETTINGS
-DEBUG = False
+DEBUG = True
 SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-fallback-key-change-this')
-APPEND_SLASH = True
 
 ALLOWED_HOSTS = [
     "api.aredo.org",
@@ -20,10 +19,12 @@ ALLOWED_HOSTS = [
     "www.aredo.org",
     "127.0.0.1",
     "localhost",
+    "31.97.77.219"
 ]
 
 # Security Headers
-SECURE_SSL_REDIRECT = True
+SECURE_SSL_REDIRECT = False
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
 SECURE_BROWSER_XSS_FILTER = True
@@ -31,10 +32,6 @@ SECURE_HSTS_SECONDS = 31536000
 SECURE_HSTS_INCLUDE_SUBDOMAINS = True
 SECURE_HSTS_PRELOAD = True
 X_FRAME_OPTIONS = 'DENY'
-SECURE_CONTENT_SECURITY_POLICY = {
-    'default-src': ("'self'",),
-    'script-src': ("'self'", "'unsafe-inline'"),
-}
 
 # INSTALLED APPS
 INSTALLED_APPS = [
@@ -111,24 +108,15 @@ DATABASES = {
     }
 }
 
-# CACHING - Redis
+# CACHING - Local Memory
 CACHES = {
     'default': {
-        'BACKEND': 'django_redis.cache.RedisCache',
-        'LOCATION': 'redis://127.0.0.1:6379/1',
-        'OPTIONS': {
-            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
-            'CONNECTION_POOL_KWARGS': {'max_connections': 50},
-            'SOCKET_CONNECT_TIMEOUT': 5,
-            'SOCKET_TIMEOUT': 5,
-            'COMPRESSOR': 'django_redis.compressors.zlib.ZlibCompressor',
-        }
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
     }
 }
 
-# Session Storage in Redis
-SESSION_ENGINE = 'django.contrib.sessions.backends.cache'
-SESSION_CACHE_ALIAS = 'default'
+# Session Storage in Database
+SESSION_ENGINE = 'django.contrib.sessions.backends.db'
 
 # STATIC & MEDIA FILES
 STATIC_URL = '/static/'
@@ -213,7 +201,7 @@ LOGGING = {
             'level': 'ERROR',
             'class': 'logging.handlers.RotatingFileHandler',
             'filename': os.path.join(BASE_DIR, 'logs', 'django.log'),
-            'maxBytes': 1024 * 1024 * 15,  # 15MB
+            'maxBytes': 1024 * 1024 * 15,
             'backupCount': 10,
             'formatter': 'verbose',
         },
