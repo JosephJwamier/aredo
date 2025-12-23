@@ -218,11 +218,15 @@ class FormKindSerializer(serializers.ModelSerializer):
             'grad_univerBach': obj.grad_univerBach,
             'grad_univermaster': obj.grad_univermaster,
             'traker': obj.traker,
+            'employee': obj.employee,
             'pdf': obj.pdf,
             'address': obj.address,
             'nearestPoint': obj.nearestPoint,
+            'city': obj.city,
             'govern': obj.govern,
             'by': obj.by,
+            'fromloc': obj.fromloc,
+            'toloc': obj.toloc,
             'pages': obj.pages,
             'magazine': obj.magazine,
             'mushref': obj.mushref,
@@ -333,11 +337,15 @@ class DynamicFormValidationMixin:
             'grad_univerBach': kind.grad_univerBach,
             'grad_univermaster': kind.grad_univermaster,
             'traker': kind.traker,
+            'employee': kind.employee,
             'pdf': kind.pdf,
             'address': kind.address,
             'nearestPoint': kind.nearestPoint,
+            'city': kind.city,
             'govern': kind.govern,
             'by': kind.by,
+            'fromloc': kind.fromloc,
+            'toloc': kind.toloc,
             'pages': kind.pages,
             'magazine': kind.magazine,
             'mushref': kind.mushref,
@@ -378,11 +386,15 @@ class DynamicFormValidationMixin:
             'grad_univerBach': kind.grad_univerBach,
             'grad_univermaster': kind.grad_univermaster,
             'traker': kind.traker,
+            'employee': kind.empolyee,
             'pdf': kind.pdf,
             'address': kind.address,
             'nearestPoint': kind.nearestPoint,
+            'city': kind.city,
             'govern': kind.govern,
             'by': kind.by,
+            'fromloc': kind.fromloc,
+            'toloc': kind.toloc,
             'pages': kind.pages,
             'magazine': kind.magazine,
             'mushref': kind.mushref,
@@ -478,6 +490,7 @@ class ApplicationFormSerializer(DynamicFormValidationMixin, serializers.ModelSer
     """Enhanced ApplicationForm serializer with dynamic validation and field filtering"""
 
     kind_display = serializers.CharField(source='kind.manager', read_only=True)
+    kind_description = serializers.CharField(source='kind.description', read_only=True)
     kind_name = serializers.CharField(source='kind.name', read_only=True)
     status_display = serializers.CharField(read_only=True)
     completion_percentage = serializers.SerializerMethodField()
@@ -488,7 +501,7 @@ class ApplicationFormSerializer(DynamicFormValidationMixin, serializers.ModelSer
         fields = '__all__'
         read_only_fields = [
             'user', 'date_applied', 'created_at', 'updated_at', 'status_display',
-            'completion_percentage', 'is_editable', 'kind_display', 'kind_name'
+            'completion_percentage', 'is_editable', 'kind_display', 'kind_name','kind_description'
         ]
 
     def to_internal_value(self, data):

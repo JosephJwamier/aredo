@@ -97,13 +97,18 @@ class FormKind(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(
-        max_length=30,
+        max_length=50,
         unique=True,
         help_text="Unique identifier for the form type"
     )
     manager = models.CharField(
         max_length=100,
         help_text="Display name for the form type"
+    )
+
+    description = models.CharField(
+        max_length=400,
+        help_text="Display description for the form type"
     )
     phonefield = models.TextField(
         blank=True,
@@ -149,6 +154,7 @@ class FormKind(models.Model):
     grad_univerBach = models.BooleanField(default=False)
     grad_univermaster =models.BooleanField(default=False)
     traker = models.BooleanField(default=False)
+    employee = models.BooleanField(default=False)
 
 
     pdf = models.BooleanField(default=False)
@@ -156,10 +162,13 @@ class FormKind(models.Model):
     # Translate-specific fields
     address = models.BooleanField(default=False)
     nearestPoint = models.BooleanField(default=False)
+    city = models.BooleanField(default=False)
     govern = models.BooleanField(default=False)
 
     # flight
     by = models.BooleanField(default=False)
+    fromloc = models.BooleanField(default=False)
+    toloc = models.BooleanField(default=False)
 
     # Publish-specific fields
     pages = models.BooleanField(default=False)
@@ -215,11 +224,15 @@ class FormKind(models.Model):
             'grad_univerBach': self.grad_univerBach,
             'grad_univermaster': self.grad_univermaster,
             'traker': self.traker,
+            'employee': self.employee,
             'pdf': self.pdf,
             'address': self.address,
             'nearestPoint': self.nearestPoint,
+            'city': self.city,
             'govern': self.govern,
             'by': self.by,
+            'fromloc': self.fromloc,
+            'toloc': self.toloc,
             'pages': self.pages,
             'magazine': self.magazine,
             'mushref': self.mushref,
@@ -331,6 +344,7 @@ class ApplicationForm(models.Model):
     grad_univerBach = models.CharField(max_length=100, blank=True)
     grad_univermaster = models.CharField(max_length=100, blank=True)
     traker = models.CharField(max_length=255, blank=True)
+    employee = models.BooleanField(default=False)
 
     def upload_to(instance, filename):
         """Construct upload path based on form kind, user, and timestamp"""
@@ -350,10 +364,13 @@ class ApplicationForm(models.Model):
     # Translate-specific fields
     address = models.CharField(max_length=255, blank=True)
     nearestPoint = models.CharField(max_length=255, blank=True)
+    city = models.CharField(max_length=255, blank=True)
     govern = models.CharField(max_length=20, choices=GOVERNORATE_CHOICES, blank=True)
 
     #flight
     by = models.CharField(max_length=20, choices=GOVERNORATE_CHOICES, blank=True)
+    fromloc = models.CharField(max_length=255, blank=True)
+    toloc = models.CharField(max_length=255, blank=True)
 
     # Publish-specific fields
     pages = models.CharField(max_length=255, blank=True)

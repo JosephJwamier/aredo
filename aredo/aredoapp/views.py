@@ -1531,7 +1531,7 @@ class ApplicantViewSet(CustomErrorMixin, viewsets.ModelViewSet):
 # Admin Dashboard Views
 class AdminDashboardView(APIView):
     """Admin dashboard with statistics"""
-    permission_classes = [IsSuperUserPermission]
+    permission_classes = [IsStaffUser]
 
     @swagger_auto_schema(
         operation_description="Get admin dashboard statistics",
